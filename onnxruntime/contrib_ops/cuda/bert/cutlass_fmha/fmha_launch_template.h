@@ -142,6 +142,7 @@ template <typename T, typename ArchTag, bool is_aligned, int queries_per_block, 
 void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
   constexpr bool dropout = false;
   using Attention = AttentionKernel<T, ArchTag, is_aligned, queries_per_block, keys_per_block, max_head_size, dropout>;
+
   typename Attention::Params p;
   {  // set parameters
     p.query_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.query));
@@ -260,7 +261,7 @@ void DispatchIsAligned(const MemoryEfficientAttentionParams& params) {
                     params.v_head_size % AlignedAK::kAlignmentV == 0;
 
   DISPATCH_BOOL(is_aligned, kIsAligned, ([&]() {
-                  LaunchCutlassFmha<T, ArchTag, kIsAligned, queries_per_block, keys_per_block, max_head_size>(params);
+                  LaunchCutlassFmha<T, ArchTag, kIsAligned::value, queries_per_block, keys_per_block, max_head_size>(params);
                 }));
 
 #if defined(_MSC_VER) && !defined(__clang__)
