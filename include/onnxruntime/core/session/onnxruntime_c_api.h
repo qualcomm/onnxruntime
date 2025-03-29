@@ -310,6 +310,7 @@ ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ModelCompilationOptions);
+ORT_RUNTIME_CLASS(ExecutionProviderDevice);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -400,6 +401,16 @@ typedef enum OrtMemoryInfoDeviceType {
   OrtMemoryInfoDeviceType_GPU = 1,
   OrtMemoryInfoDeviceType_FPGA = 2
 } OrtMemoryInfoDeviceType;
+
+typedef enum OrtExecutionProviderDevicePolicy {
+  OrtExecutionProviderDevicePolicy_DEFAULT,
+  OrtExecutionProviderDevicePolicy_PREFER_CPU,
+  OrtExecutionProviderDevicePolicy_PREFER_NPU,
+  OrtExecutionProviderDevicePolicy_PREFER_GPU,
+  OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE,
+  OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY,
+  OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER,
+} OrtExecutionProviderDevicePolicy;
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -4892,6 +4903,20 @@ struct OrtApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetEpContextEmbedMode, _In_ OrtModelCompilationOptions* model_compile_options,
                   bool embed_ep_context_in_model);
   ORT_API2_STATUS(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
+
+
+  /// @}
+  /// \name OrtExecutionProviderDevice
+  /// @{
+  ORT_CLASS_RELEASE(ExecutionProviderDevice);
+
+  ORT_API2_STATUS(GetExecutionProviderDevices, _In_ const OrtEnv* env,
+                  const OrtExecutionProviderDevice** ep_devices, size_t* num_ep_devices);
+  ORT_API2_STATUS(ExecutionProviderDevice_GetExecutionProviderName, _In_ const OrtExecutionProviderDevice* ep_device,
+                  char** provider_name, size_t* provider_name_length);
+  ORT_API2_STATUS(ExecutionProviderDevice_GetProperties, _In_ const OrtExecutionProviderDevice* ep_device,
+                  const char** keys, const char** values, size_t* num_properties);
+  ORT_API2_STATUS(GetExecutionProviderDeviceFromPolicy, _In_ const OrtEnv* env, _In_ OrtExecutionProviderDevicePolicy policy);
 };
 
 /*
