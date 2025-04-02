@@ -38,11 +38,11 @@ struct ProgramUniformVariableValue {
   ProgramUniformVariableValue(float value);
   ProgramUniformVariableValue(uint32_t value);
   ProgramUniformVariableValue(int32_t value);
-  ProgramUniformVariableValue(MLFloat16 value);
+  // ProgramUniformVariableValue(MLFloat16 value);
   ProgramUniformVariableValue(gsl::span<const float> values);
   ProgramUniformVariableValue(gsl::span<const uint32_t> values);
   ProgramUniformVariableValue(gsl::span<const int32_t> values);
-  ProgramUniformVariableValue(gsl::span<const MLFloat16> values);
+  // ProgramUniformVariableValue(gsl::span<const MLFloat16> values);
 
   size_t length;
   ProgramUniformVariableDataType data_type;

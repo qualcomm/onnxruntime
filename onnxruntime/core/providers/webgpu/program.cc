@@ -23,8 +23,8 @@ ProgramUniformVariableValue::ProgramUniformVariableValue(uint32_t value)
 ProgramUniformVariableValue::ProgramUniformVariableValue(int32_t value)
     : ProgramUniformVariableValue(ProgramUniformVariableDataType::Int32, &value, sizeof(int32_t)) {}
 
-ProgramUniformVariableValue::ProgramUniformVariableValue(MLFloat16 value)
-    : ProgramUniformVariableValue(ProgramUniformVariableDataType::Float16, &value, sizeof(MLFloat16)) {}
+// ProgramUniformVariableValue::ProgramUniformVariableValue(MLFloat16 value)
+//     : ProgramUniformVariableValue(ProgramUniformVariableDataType::Float16, &value, sizeof(MLFloat16)) {}
 
 ProgramUniformVariableValue::ProgramUniformVariableValue(gsl::span<const float> values)
     : ProgramUniformVariableValue(ProgramUniformVariableDataType::Float32, values.data(), sizeof(float), values.size()) {}
@@ -35,8 +35,8 @@ ProgramUniformVariableValue::ProgramUniformVariableValue(gsl::span<const uint32_
 ProgramUniformVariableValue::ProgramUniformVariableValue(gsl::span<const int32_t> values)
     : ProgramUniformVariableValue(ProgramUniformVariableDataType::Int32, values.data(), sizeof(int32_t), values.size()) {}
 
-ProgramUniformVariableValue::ProgramUniformVariableValue(gsl::span<const MLFloat16> values)
-    : ProgramUniformVariableValue(ProgramUniformVariableDataType::Float16, values.data(), sizeof(MLFloat16), values.size()) {}
+// ProgramUniformVariableValue::ProgramUniformVariableValue(gsl::span<const MLFloat16> values)
+//     : ProgramUniformVariableValue(ProgramUniformVariableDataType::Float16, values.data(), sizeof(MLFloat16), values.size()) {}
 
 ProgramUniformVariableValue::ProgramUniformVariableValue(ProgramUniformVariableDataType data_type,
                                                          const void* ptr,

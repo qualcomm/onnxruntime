@@ -65,6 +65,8 @@ struct OrtEnv {
   ~OrtEnv();
   onnxruntime::common::Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
+  // arbitrary stub to figure out the flow.
+  onnxruntime::common::Status RegisterEP(const std::string& library_path);
  private:
   static std::unique_ptr<OrtEnv> p_instance_;
   static std::mutex m_;

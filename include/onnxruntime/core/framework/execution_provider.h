@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "core/common/basic_types.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
@@ -29,6 +30,7 @@ class GraphOptimizerRegistry;
 #include "core/common/basic_types.h"
 #include "core/common/profiler_common.h"
 #include "core/framework/allocator_utils.h"
+#include "core/framework/execution_device.h"
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/framework_provider_common.h"
@@ -364,6 +366,15 @@ class IExecutionProvider {
    */
   virtual const InlinedVector<const Node*> GetEpContextNodes() const {
     return InlinedVector<const Node*>();
+  }
+
+  /// <summary>
+  /// Return an ExecutionDevice instance for any devices the EP wishes to be used with.
+  /// </summary>
+  /// <param name="devices">Available devices.</param>
+  /// <returns>ExecutionDevice info </returns>
+  virtual std::vector<ExecutionDevice> GetExecutionDevices(const std::vector<HardwareDevice>& /*devices*/) {
+    return {};
   }
 
  private:

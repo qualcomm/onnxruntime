@@ -4,16 +4,20 @@
 #pragma once
 
 #include <atomic>
+#include <filesystem>
 #include <memory>
+
 #include "core/common/common.h"
-#include "core/common/status.h"
-#include "core/platform/threadpool.h"
 #include "core/common/logging/logging.h"
+#include "core/common/status.h"
 #include "core/framework/allocator.h"
+#include "core/framework/execution_provider.h"
+#include "core/platform/device_discovery.h"
+#include "core/platform/threadpool.h"
 
 struct OrtThreadingOptions;
 namespace onnxruntime {
-/** TODO: remove this class
+/**
    Provides the runtime environment for onnxruntime.
    Create one instance for the duration of execution.
 */
@@ -88,16 +92,26 @@ class Environment {
    */
   Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
+  Status RegisterEP(const std::filesystem::path& library_path);
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
   Status Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                     const OrtThreadingOptions* tp_options = nullptr,
                     bool create_global_thread_pools = false);
 
+  Status RegisterInternalEPs();
+
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
   std::vector<AllocatorPtr> shared_allocators_;
+
+  // EP + Device combinations currently available.
+  // RegisterEP adds to this.
+  // TODO: When/where should info for statically included EPs be added?
+  std::vector<ExecutionDevice> execution_devices_;
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers_;
 };
 }  // namespace onnxruntime

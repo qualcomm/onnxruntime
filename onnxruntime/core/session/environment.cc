@@ -2,10 +2,13 @@
 // Licensed under the MIT License.
 
 #include "core/session/environment.h"
-#include "core/session/allocator_adapters.h"
+
 #include "core/framework/allocator_utils.h"
+#include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
+#include "core/platform/device_discovery.h"
+#include "core/session/allocator_adapters.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
@@ -308,6 +311,8 @@ Internal copy node
 Internal copy node
 )DOC");
 
+    ORT_RETURN_IF_ERROR(RegisterInternalEPs());
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
     // fire off startup telemetry (this call is idempotent)
     const Env& env = Env::Default();
@@ -339,7 +344,46 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
     return RegisterAllocator(allocator_ptr);
   }
 #endif
-  return Status{ONNXRUNTIME, common::INVALID_ARGUMENT, provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
+  return Status{ONNXRUNTIME, common::INVALID_ARGUMENT,
+                provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
+}
+
+std::unique_ptr<IExecutionProvider> LoadEPFromPath(const std::filesystem::path& path) {
+  return nullptr;
+}
+Status Environment::RegisterEP(const std::filesystem::path& library_path) {
+  // load EP.
+  auto ep = LoadEPFromPath(library_path);
+  if (!ep) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load execution provider from ", library_path);
+  }
+
+  auto ep_devices = ep->GetExecutionDevices(DeviceDiscovery::GetDevices());
+  if (!ep_devices.empty()) {
+    execution_providers_.emplace_back(std::move(ep));
+    execution_devices_.emplace_back(std::move(ep_devices));
+  } else {
+    LOGS_DEFAULT(INFO) << "Execution provider ", ep->Type(), " is not valid for available devices. Unloading.";
+    // TODO: proper unload. just release for now.
+  }
+
+  return Status::OK();
+}
+
+// Needs rework. 
+// We register the factories with the Environment. 
+// We create the EP instances once we have the session options so we can configure an EP at that granularity.
+Status Environment::RegisterInternalEPs() 
+{
+    // CPU EP
+
+
+    #if defined(USE_DML)
+    // TODO: Create EP instance. How 
+    #endif 
+
+    #if defined(USE_WEBGPU)
+    #endif
 }
 
 }  // namespace onnxruntime
