@@ -111,7 +111,7 @@ class Environment {
   // EP + Device combinations currently available.
   // RegisterEP adds to this.
   // TODO: When/where should info for statically included EPs be added?
-  std::vector<ExecutionDevice> execution_devices_;
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers_;
+  // std::vector<ExecutionDevice> execution_devices_;
+  // std::vector<std::unique_ptr<IExecutionProvider>> execution_providers_;
 };
 }  // namespace onnxruntime

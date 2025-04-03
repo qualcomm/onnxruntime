@@ -351,6 +351,7 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 std::unique_ptr<IExecutionProvider> LoadEPFromPath(const std::filesystem::path& path) {
   return nullptr;
 }
+
 Status Environment::RegisterEP(const std::filesystem::path& library_path) {
   // load EP.
   auto ep = LoadEPFromPath(library_path);
@@ -376,7 +377,9 @@ Status Environment::RegisterEP(const std::filesystem::path& library_path) {
 Status Environment::RegisterInternalEPs() 
 {
     // CPU EP
-
+    // TODO: Do we need to delay this until session options are available? 
+      CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
+      auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
 
     #if defined(USE_DML)
     // TODO: Create EP instance. How 

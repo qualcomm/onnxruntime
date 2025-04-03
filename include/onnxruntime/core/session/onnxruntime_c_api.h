@@ -278,10 +278,31 @@ typedef enum OrtExecutionPreference {
   CPU_ONLY,
   PREFER_GPU,  // use GPU if available. fallback to CPU.
   PREFER_NPU,  // use NPU if available. fallback to CPU.
-  MAX_PERFORMANCE,
-  MAX_EFFICIENCY,
-  MIN_POWER
+  HIGH_PERFORMANCE,
+  HIGH_EFFICIENCY,
+  MIN_POWER,
+  MODEL_BASED
 } OrtExecutionPreference;
+
+struct OrtKeyValuePairs {
+  const char** keys;
+  const char** values;
+  size_t count;
+};
+
+struct OrtHardwareDevice {
+  OrtHardwareDeviceType type;
+  const char* vendor;
+  OrtKeyValuePairs device_properties;
+};
+
+// TODO: struct at API level or opaque type with accessors?
+struct ExecutionDevice {
+  const char* name;              // EP name
+  const char* execution_vendor;  // EP vendor
+  OrtHardwareDevice device;
+  OrtKeyValuePairs properties;  // metadata from EP
+};
 
 //! @}
 #define ORT_RUNTIME_CLASS(X) \
@@ -326,6 +347,8 @@ ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ModelCompilationOptions);
+ORT_RUNTIME_CLASS(HardwareDevice);
+ORT_RUNTIME_CLASS(ExecutionDevice);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -688,6 +711,9 @@ typedef struct OrtTrainingApi OrtTrainingApi;
 
 struct OrtModelEditorApi;
 typedef struct OrtModelEditorApi OrtModelEditorApi;
+
+struct OrtEpApi;
+typedef struct OrtEpApi OrtEpApi;
 
 /** \brief The helper interface to get the right version of OrtApi
  *
@@ -4945,83 +4971,105 @@ struct OrtApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetEpContextEmbedMode, _In_ OrtModelCompilationOptions* model_compile_options,
                   bool embed_ep_context_in_model);
   ORT_API2_STATUS(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
-};
 
-// EP library implements
-// - OrtStatus* CreateEpPlugin(const OrtApiBase* ort_api_base, /*out*/OrtEpPlugin** out);
-//   - library creates OrtEpPlugin instance after validating it can get the ORT API for the ORT version it supports
-// -
-
-struct OrtKeyValuePairs {
-  const char** keys;
-  const char** values;
-  size_t count;
-};
-
-struct OrtHardwareDevice {
-  const char* vendor;
-};
-
-struct OrtExecutionDevice {};  // this can be opaque
-
-struct OrtEP {
-  void* data;  // Used by OrtEP to store custom data. Not used by ORT.
-
-  // OrtApi adds
-  // the OrtEP is primarily for Type but could be used for more. up to ORT implementation
-  // OrtStatus* CreateExecutionDevice(OrtEP* ep, const HardwareDevice*, OrtKeyValuePairs* ep_device_properties,
-  //                                  OrtExecutionDevice** ort_execution_device);
   //
-  // Relase may not be needed as the type is internal and we take ownership of the instance when returned by
-  // CreateExecutionDevice
-  // void ReleaseExecutionDevice(OrtExecutionDevice* ort_execution_device);
+  // Plugin Execution Provider API
+  //
+  // Sadly there's already a GetExecutionProviderApi function... so use 'Ep' to match all the other naming in OrtEpApi
+  const OrtEpApi*(ORT_API_CALL* GetEpApi)();
 
-  const char* GetType(OrtEP* this_ptr);    // return EP name
-  const char* GetVendor(OrtEP* this_ptr);  // return EP vendor
-
-  OrtStatus* GetDeviceSupportInfo(_In_ /* const? */ OrtEP* this_ptr,
-                                  _In_reads_(num_devices) const OrtHardwareDevice** devices,
-                                  _In_ size_t num_devices,
-                                  OrtExecutionDevice** execution_devices,
-                                  size_t* num_execution_devices);
-
-  // OrtStatus* GetCapability(OrtEp* ep, const OrtGraph* graph,
-  //                          size_t* num_supported_subgraphs,
-  //                          OrtIndexedSubgraph** supported_subgraphs, OrtAllocator* allocator);
-
-  // OrtStatus* Compile(OrtEp* ep, const OrtGraph** graphs, OrtNode** fused_graph_nodes,
-  //                    size_t count, OrtNodeComputeInfo* node_compute_infos);
-
-  //  Many other functions!
+  ORT_CLASS_RELEASE(KeyValuePairs);
 };
 
-struct OrtEpFactory {
-  void* data;  // Used by OrtEpFactory to store custom data. Not used by ORT.
+struct OrtEpApi {
+  struct OrtEp {
+    // GetDeviceSupportInfo allows the EP to find devices it supports. It should call CreateExecutionDevice for each
+    // one and return in execution_devices.
+    //
+    // OrtStatus* CreateExecutionDevice(OrtEp* ep, const HardwareDevice*, OrtKeyValuePairs* ep_device_properties,
+    //                                  OrtExecutionDevice** ort_execution_device);
+    //
+    // Release may not be needed as the type is internal and we take ownership of the instance when returned by
+    // CreateExecutionDevice
+    // void ReleaseExecutionDevice(OrtExecutionDevice* ort_execution_device);
 
-  // Factory function can read config key/value pairs from OrtSessionOptions.
-  // Should also provide access to the session logger which is preferred.
-  OrtStatus* CreateEP(OrtEpFactory* this_ptr, const OrtSessionOptions* session_options, /*out*/ OrtEP** ep);
-  void ReleaseEP(OrtEpFactory* this_ptr, OrtEP* ep);
+    const char*(ORT_API_CALL* GetName)(OrtEp* this_ptr);    // return EP name
+    const char*(ORT_API_CALL* GetVendor)(OrtEp* this_ptr);  // return EP vendor
+
+    OrtStatus*(ORT_API_CALL* GetExecutionDevices)(_In_ /* const? */ OrtEp* this_ptr,
+                                                  _In_reads_(num_devices) const OrtHardwareDevice** devices,
+                                                  _In_ size_t num_devices,
+                                                  OrtExecutionDevice** execution_devices,
+                                                  size_t* num_execution_devices);
+
+    // OrtStatus* GetCapability(OrtEp* ep, const OrtGraph* graph,
+    //                          size_t* num_supported_subgraphs,
+    //                          OrtIndexedSubgraph** supported_subgraphs, OrtAllocator* allocator);
+
+    // OrtStatus* Compile(OrtEp* ep, const OrtGraph** graphs, OrtNode** fused_graph_nodes,
+    //                    size_t count, OrtNodeComputeInfo* node_compute_infos);
+
+    //  Many other functions!
+  };
+
+  struct OrtEpFactory {
+    // Factory function to create an EP instance.
+    //
+    //   Factory function can read config key/value pairs from OrtSessionOptions.
+    //   NOTE: This is generic so there are no provider specific options. Existing EPs will need to be updated to read
+    //         all their options from OrtSessionOptions.ConfigOptions.
+    //   logger is Session logger. EP instance should use for output.
+    OrtStatus*(ORT_API_CALL* CreateEp)(_In_ OrtEpFactory* this_ptr, _In_ const OrtSessionOptions* session_options,
+                                       _In_ const OrtLogger* logger, _Out_ OrtEp** ep);
+
+    // Function ORT calls to release an EP instance.
+    void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, OrtEp* ep);
+  };
+
+  // EP library implements
+  // - OrtStatus* CreateEpPlugins(const OrtApiBase* ort_api_base, /*out*/OrtEpPlugin** out, size_t num_eps);
+  //   - library creates OrtEpPlugin instance after validating it can get the ORT API for the ORT version it supports
+  // - OrtStatus* ReleaseEpPlugin(OrtEpPlugin* ep_plugin);
+  struct OrtEpPlugin {
+    // ORT calls to add the EP factory to the Environment
+    OrtStatus*(ORT_API_CALL* CreateEpFactory)(OrtEpPlugin* this_ptr, /*output*/ OrtEpFactory** ep_factory);
+
+    // ORT calls when destructing the Environment.
+    void(ORT_API_CALL* ReleaseEpFactory)(OrtEpPlugin* this_ptr, OrtEpFactory* ep_factory);
+  };
+
+  // Library calls to register OrtEpPlugin with ORT
+  // ORT uses Env::Default.
+  // ??? Does ORT take ownership of the OrtEpPlugin in which case we need to release it?
+  // As we don't need a 'create' function lets assume the library owns for now.
+  ORT_API2_STATUS(RegisterEpPlugin, OrtEpPlugin* plugin);
+
+  //
+  // OrtSessionOptions accessors
+  //
+
+  // Get ConfigOptions
+  // TODO: Define the filter. Should it be simple match or regex? Or just a prefix given all EP specific values should
+  //       have a well defined prefix that include the EP name?
+  ORT_API2_STATUS(SessionOptionsConfigOptions, _In_ const OrtSessionOptions* session_options,
+                  _In_opt_ const char* filter,
+                  _Out_ OrtKeyValuePairs** options);
+
+  // Get ConfigOptions by key. Returns null in value if key not found (vs pointer to empty string if found).
+  ORT_API2_STATUS(SessionOptionsConfigOption, _In_ const OrtSessionOptions* session_options, _In_ const char* key,
+                  _Out_ const char** value);
+
+  // Get graph_optimization_level
+  // - EPs will implement optimizers so need to be aware of this
+
+  // Get use_deterministic_compute
+
+  // Get custom thread create func/join func/options
+
+  // Get logging function???
+  // - ORT should probably abstract EP from knowing if there was a user providing logging function
 };
 
-struct OrtEpPlugin {
-  uint32_t version;  // Must be initialized to ORT_API_VERSION.
-  void* data;        // Used by OrtEpPlugin to store custom data. Not used by ORT.
-
-  // This probably moves to the OrtEp struct
-  // bool GetDeviceSupportInfo(OrtEpPlugin* ep_plugin,
-  //                          OrtDevice* device,
-  //                          OrtAllocator* allocator,
-  //                          /*output*/ OrtKeyValuePairs* ep_device_metadata,
-  //                          /*output*/ OrtKeyValuePairs* ep_options_for_device);
-
-  // when should this be called? naively ORT calls it to create a factory that it sticks in the environment.
-  // but that should be fairly immediate and is likely to not have any EP or Session options/configs as those aren't
-  // available (and hopefully not required) until the factory is called to create an EP instance
-  OrtStatus* CreateEpFactory(OrtEpPlugin* this_ptr, /*output*/ OrtEpFactory** ep_factory);
-
-  void ReleaseEpFactory(OrtEpPlugin* this_ptr, OrtEpFactory* ep_factory);
-};
 /*
  * Steps to use a custom op:
  *   1 Create an OrtCustomOpDomain with the domain name used by the custom ops
