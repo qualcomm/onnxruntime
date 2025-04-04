@@ -366,6 +366,8 @@ Status Environment::RegisterInternalEpFactories() {
 
 #if defined(USE_WEBGPU)
 #endif
+
+  return Status::OK();
 }
 
 }  // namespace onnxruntime
