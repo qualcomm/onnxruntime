@@ -349,10 +349,15 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 }
 
 std::unique_ptr<IExecutionProvider> LoadEPFromPath(const std::filesystem::path& path) {
+  // need to use stuff from \onnxruntime\core\providers\shared_library\provider_host_api.h
+  // the setup is slightly different with there being provider_options in the CreateExecutionProviderFactory func
+  // as well as UpdateProviderOptions.
+  // let's assume we call CreateExecutionProviderFactory with no options and UpdateProviderOptions when we have the
+  // SessionOptions.
   return nullptr;
 }
 
-Status Environment::RegisterEP(const std::filesystem::path& library_path) {
+Status Environment::RegisterEPFactory(const std::filesystem::path& library_path) {
   // load EP.
   auto ep = LoadEPFromPath(library_path);
   if (!ep) {
@@ -371,22 +376,21 @@ Status Environment::RegisterEP(const std::filesystem::path& library_path) {
   return Status::OK();
 }
 
-// Needs rework. 
-// We register the factories with the Environment. 
+// Needs rework.
+// We register the factories with the Environment.
 // We create the EP instances once we have the session options so we can configure an EP at that granularity.
-Status Environment::RegisterInternalEPs() 
-{
-    // CPU EP
-    // TODO: Do we need to delay this until session options are available? 
-      CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
-      auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
+Status Environment::RegisterInternalEPs() {
+  // CPU EP
+  // TODO: Do we need to delay this until session options are available?
+  CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
+  auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
 
-    #if defined(USE_DML)
-    // TODO: Create EP instance. How 
-    #endif 
+#if defined(USE_DML)
+// TODO: Create EP instance. How
+#endif
 
-    #if defined(USE_WEBGPU)
-    #endif
+#if defined(USE_WEBGPU)
+#endif
 }
 
 }  // namespace onnxruntime

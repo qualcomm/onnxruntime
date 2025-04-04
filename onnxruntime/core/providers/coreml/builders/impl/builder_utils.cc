@@ -348,6 +348,7 @@ void AddOperationInput(MILSpec::Operation& op, std::string_view input_name, std:
 void AddOperationVariadicInput(MILSpec::Operation& op, std::string_view input_name,
                                const std::vector<std::string_view>& value_names) {
   MILSpec::Argument arg;
+
   for (const auto& value : value_names) {
     arg.mutable_arguments()->Add()->set_name(value.data(), value.size());
   }

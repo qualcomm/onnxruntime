@@ -4,11 +4,11 @@
 #pragma once
 #include <atomic>
 #include <string>
-#include "core/session/onnxruntime_c_api.h"
 #include <mutex>
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 class Environment;
@@ -67,6 +67,7 @@ struct OrtEnv {
 
   // arbitrary stub to figure out the flow.
   onnxruntime::common::Status RegisterEP(const std::string& library_path);
+
  private:
   static std::unique_ptr<OrtEnv> p_instance_;
   static std::mutex m_;

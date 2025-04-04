@@ -267,43 +267,6 @@ typedef enum OrtOpAttrType {
   ORT_OP_ATTR_STRINGS,
 } OrtOpAttrType;
 
-typedef enum OrtHardwareDeviceType {
-  CPU,
-  GPU,
-  NPU
-} OrtHardwareDeviceType;
-
-typedef enum OrtExecutionPreference {
-  DEFAULT,
-  CPU_ONLY,
-  PREFER_GPU,  // use GPU if available. fallback to CPU.
-  PREFER_NPU,  // use NPU if available. fallback to CPU.
-  HIGH_PERFORMANCE,
-  HIGH_EFFICIENCY,
-  MIN_POWER,
-  MODEL_BASED
-} OrtExecutionPreference;
-
-struct OrtKeyValuePairs {
-  const char** keys;
-  const char** values;
-  size_t count;
-};
-
-struct OrtHardwareDevice {
-  OrtHardwareDeviceType type;
-  const char* vendor;
-  OrtKeyValuePairs device_properties;
-};
-
-// TODO: struct at API level or opaque type with accessors?
-struct ExecutionDevice {
-  const char* name;              // EP name
-  const char* execution_vendor;  // EP vendor
-  OrtHardwareDevice device;
-  OrtKeyValuePairs properties;  // metadata from EP
-};
-
 //! @}
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
@@ -349,6 +312,7 @@ ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(ExecutionDevice);
+ORT_RUNTIME_CLASS(KeyValuePairs);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -439,6 +403,37 @@ typedef enum OrtMemoryInfoDeviceType {
   OrtMemoryInfoDeviceType_GPU = 1,
   OrtMemoryInfoDeviceType_FPGA = 2
 } OrtMemoryInfoDeviceType;
+
+typedef enum OrtHardwareDeviceType {
+  CPU,
+  GPU,
+  NPU
+} OrtHardwareDeviceType;
+
+typedef enum OrtExecutionPreference {
+  DEFAULT,
+  CPU_ONLY,
+  PREFER_GPU,  // use GPU if available. fallback to CPU.
+  PREFER_NPU,  // use NPU if available. fallback to CPU.
+  HIGH_PERFORMANCE,
+  HIGH_EFFICIENCY,
+  MIN_POWER,
+  MODEL_BASED
+} OrtExecutionPreference;
+
+typedef struct OrtHardwareDevice {
+  OrtHardwareDeviceType type;
+  const char* vendor;
+  const OrtKeyValuePairs* properties;
+} OrtHardwareDevice;
+
+// TODO: struct at API level or opaque type with accessors?
+typedef struct OrtExecutionDevice {
+  const char* name;              // EP name
+  const char* execution_vendor;  // EP vendor
+  const OrtHardwareDevice* device;
+  const OrtKeyValuePairs* properties;  // metadata from EP
+} OrtExecutionDevice;
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -4978,6 +4973,14 @@ struct OrtApi {
   // Sadly there's already a GetExecutionProviderApi function... so use 'Ep' to match all the other naming in OrtEpApi
   const OrtEpApi*(ORT_API_CALL* GetEpApi)();
 
+  // Making OrtKeyValuePairs opaque so we can control whether the keys/values need to be freed better.
+  ORT_API2_STATUS(CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out);
+  // add pair. values will be copied to guarantee lifetime
+  ORT_API2_STATUS(AddKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key, _In_ const char* value);
+  const char*(ORT_API_CALL* GetKeyValuePair)(OrtKeyValuePairs* kvps, const char* key);
+  ORT_API2_STATUS(GetKeyValuePairs, OrtKeyValuePairs* kvps, const char** keys, const char** values,
+                  size_t* num_entries);
+
   ORT_CLASS_RELEASE(KeyValuePairs);
 };
 
@@ -5027,7 +5030,7 @@ struct OrtEpApi {
   };
 
   // EP library implements
-  // - OrtStatus* CreateEpPlugins(const OrtApiBase* ort_api_base, /*out*/OrtEpPlugin** out, size_t num_eps);
+  // - OrtStatus* CreateEpPlugins(const OrtApiBase* ort_api_base);
   //   - library creates OrtEpPlugin instance after validating it can get the ORT API for the ORT version it supports
   // - OrtStatus* ReleaseEpPlugin(OrtEpPlugin* ep_plugin);
   struct OrtEpPlugin {
@@ -5038,21 +5041,31 @@ struct OrtEpApi {
     void(ORT_API_CALL* ReleaseEpFactory)(OrtEpPlugin* this_ptr, OrtEpFactory* ep_factory);
   };
 
-  // Library calls to register OrtEpPlugin with ORT
-  // ORT uses Env::Default.
-  // ??? Does ORT take ownership of the OrtEpPlugin in which case we need to release it?
-  // As we don't need a 'create' function lets assume the library owns for now.
+  // Library calls to register OrtEpPlugin with ORT from CreateEpPlugins
+  // ORT calls ReleaseEpPlugin when done with it.
   ORT_API2_STATUS(RegisterEpPlugin, OrtEpPlugin* plugin);
+
+  /// <summary>
+  /// Create an OrtExecutionDevice for an EP + HardwareDevice combination.
+  /// </summary>
+  /// <param name="ep">Execution provider</param>
+  /// <param name="hardware_device">Hardware device that the EP can utilize.</param>
+  /// <param name="ep_device_properties">EP specific metadata for execution on hardware_device.</param>
+  /// <param name="ort_execution_device">OrtExecutionDevice that is created.</param>
+  ORT_API2_STATUS(CreateExecutionDevice, _In_ /*const*/ OrtEp* ep, _In_ const OrtHardwareDevice* hardware_device,
+                  _In_reads_(num_ep_device_properties) const char** ep_device_properties_keys,
+                  _In_reads_(num_ep_device_properties) const char** ep_device_properties_values,
+                  _In_ size_t num_ep_device_properties,
+                  _Out_ OrtExecutionDevice** ort_execution_device);
 
   //
   // OrtSessionOptions accessors
   //
 
-  // Get ConfigOptions
-  // TODO: Define the filter. Should it be simple match or regex? Or just a prefix given all EP specific values should
-  //       have a well defined prefix that include the EP name?
+  // Get ConfigOptions.
+  // User must call ReleaseKeyValuePairs to release the returned OrtKeyValuePairs instance.
+  // TODO: Is there any value to being able to filter to EP specific options with a prefix like 'ep.<epname>.'?
   ORT_API2_STATUS(SessionOptionsConfigOptions, _In_ const OrtSessionOptions* session_options,
-                  _In_opt_ const char* filter,
                   _Out_ OrtKeyValuePairs** options);
 
   // Get ConfigOptions by key. Returns null in value if key not found (vs pointer to empty string if found).

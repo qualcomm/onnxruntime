@@ -5,5 +5,5 @@
 
 #include "onnxruntime_c_api.h"
 
-OrtStatus* CreateEpPlugins(const OrtApiBase* ort_api_base, /*out*/OrtEpApi::OrtEpPlugin** out, size_t num_eps);
+OrtStatus* CreateEpPlugins(const OrtApiBase* ort_api_base);
 OrtStatus* ReleaseEpPlugin(OrtEpApi::OrtEpPlugin* ep_plugin);

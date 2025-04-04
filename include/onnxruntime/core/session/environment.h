@@ -15,6 +15,9 @@
 #include "core/platform/device_discovery.h"
 #include "core/platform/threadpool.h"
 
+// TODO: should we be getting the plugin EP types this way or from an internal header?
+#include "core/session/onnxruntime_c_api.h"
+
 struct OrtThreadingOptions;
 namespace onnxruntime {
 /**
@@ -92,7 +95,23 @@ class Environment {
    */
   Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
-  Status RegisterEP(const std::filesystem::path& library_path);
+  // provider bridge EPs. we load the library from the path.
+  Status RegisterEPFactory(const std::filesystem::path& library_path);
+
+  Status RegisterPluginEP(OrtEpApi::OrtEpPlugin& ep) {
+    plugin_eps_.push_back(&ep);
+    OrtEpFactory* ep_factory = nullptr;
+
+    // TODO: Weird to be calling API funcs here as we need to convert from OrtStatus -> Status -> OrtStatus.
+    //       Can we structure this differently? Do we need OrtEpPlugin and OrtEpFactory or could we just register
+    //       the factory here?
+    OrtStatus* status = ep.CreateEpFactory(&ep, &ep_factory);
+    if (status != nullptr) {
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to create EP factory. <FIXME: add error>");
+    }
+
+    return Status::OK();
+  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
@@ -108,10 +127,6 @@ class Environment {
   bool create_global_thread_pools_{false};
   std::vector<AllocatorPtr> shared_allocators_;
 
-  // EP + Device combinations currently available.
-  // RegisterEP adds to this.
-  // TODO: When/where should info for statically included EPs be added?
-  // std::vector<ExecutionDevice> execution_devices_;
-  // std::vector<std::unique_ptr<IExecutionProvider>> execution_providers_;
-};
+  std::vector<OrtEpApi::OrtEpPlugin*> plugin_eps_;
+  std::vector<OrtEpApi::OrtEpFactory*> plugin_ep_factories_;
 }  // namespace onnxruntime

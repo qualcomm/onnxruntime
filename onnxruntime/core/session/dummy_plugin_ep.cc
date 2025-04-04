@@ -1,12 +1,23 @@
 #include "dummy_plugin_ep.h"
+#include "onnxruntime_cxx_api.h"
 
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <gsl/span>
+
 using OrtEpPlugin = OrtEpApi::OrtEpPlugin;
 using OrtEpFactory = OrtEpApi::OrtEpFactory;
 using OrtEp = OrtEpApi::OrtEp;
+
+#define RETURN_IF_ERROR(fn)   \
+  do {                        \
+    OrtStatus* status = (fn); \
+    if (status != nullptr) {  \
+      return status;          \
+    }                         \
+  } while (0)
 
 struct ApiPtrs {
   const OrtApi& ort_api;
@@ -18,6 +29,10 @@ struct DummyEp : OrtEp, ApiPtrs {
     // Initialize the execution provider
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+
+    // TODO: Get EP specific settings out of config_options.
+    // EP should copy any values it needs from options as factory will release the OrtKeyValuePairs instance which may
+    // result in the const char* key/value instances becoming invalid.
   }
 
   ~DummyEp() {
@@ -43,6 +58,33 @@ struct DummyEp : OrtEp, ApiPtrs {
     *execution_devices = nullptr;
     *num_execution_devices = 0;
 
+    gsl::span<const OrtHardwareDevice*> devices_span{devices, num_devices};
+    for (const auto* device : devices_span) {
+      if (device == nullptr) {
+        continue;  // should never happen
+      }
+
+      if (device->type == OrtHardwareDeviceType::CPU) {
+        OrtExecutionDevice* execution_device = nullptr;
+        std::vector<const char*> keys;
+        std::vector<const char*> values;
+        // random example using made up options
+        keys.push_back("big_cores");
+        values.push_back("2");
+        keys.push_back("little_cores");
+        values.push_back("4");
+        RETURN_IF_ERROR(
+            ep->ep_api.CreateExecutionDevice(this_ptr, device, keys.data(), values.data(), keys.size(),
+                                             &execution_device));
+
+        *execution_devices = execution_device;
+        *num_execution_devices = 1;
+
+        // only one. implementation could potentially have multiple devices
+        return nullptr;
+      }
+    }
+
     return nullptr;
   }
 
@@ -53,31 +95,23 @@ struct DummyEp : OrtEp, ApiPtrs {
 struct DummyEpFactory : OrtEpFactory, ApiPtrs {
   DummyEpFactory(ApiPtrs apis) : ApiPtrs(apis) {
     CreateEp = CreateEpImpl;
-    ReleaseEp = ReleaseEpImpl
-
-    // Function ORT calls to release an EP instance.
-    // void(ORT_API_CALL * ReleaseEP)(OrtEpFactory * this_ptr, OrtEp * ep);
-  }
-
-  ~DummyEpFactory() {
-    // Clean up the factory
+    ReleaseEp = ReleaseEpImpl;
   }
 
   static OrtStatus* CreateEpImpl(OrtEpFactory* this_ptr, const OrtSessionOptions* session_options,
                                  const OrtLogger* logger, OrtEp** ep) {
     // Create the execution provider
     DummyEpFactory* factory = static_cast<DummyEpFactory*>(this_ptr);
+    factory->ort_api.Logger_LogMessage(logger,
+                                       OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
+                                       "Creating Dummy EP", ORT_FILE, __LINE__, __FUNCTION__);
 
     OrtKeyValuePairs* options = nullptr;
-    auto status = factory->ep_api.SessionOptionsConfigOptions(session_options, /*filter*/ nullptr, &options);
-
-    if (status != nullptr) {
-      return status;
-    }
-
-    auto ep = std::make_unique<DummyEp>(factory->ort_api, *options);
+    RETURN_IF_ERROR(factory->ep_api.SessionOptionsConfigOptions(session_options, &options));
+    auto dummy_ep = std::make_unique<DummyEp>(*factory, *options);
     factory->ort_api.ReleaseKeyValuePairs(options);
 
+    *ep = dummy_ep.release();
     nullptr;
   }
 
@@ -104,7 +138,6 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
 struct DummyPluginEp : OrtEpApi::OrtEpPlugin, ApiPtrs {
   DummyPluginEp(ApiPtrs apis) : ApiPtrs{apis} {
     // Initialize the plugin
-    data = nullptr;  // state if needed. as we have a this pointer that seems unnecessary
     CreateEpFactory = CreateEpFactoryImpl;
     ReleaseEpFactory = ReleaseEpFactoryImpl;
   }
@@ -142,13 +175,20 @@ struct DummyPluginEp : OrtEpApi::OrtEpPlugin, ApiPtrs {
 // Public symbols
 //
 
-OrtStatus* CreateEpPlugins(const OrtApiBase* ort_api_base, /*out*/ OrtEpApi::OrtEpPlugin** out, size_t num_eps) {
+OrtStatus* CreateEpPlugins(const OrtApiBase* ort_api_base) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   const OrtEpApi* ep_api = ort_api->GetEpApi();
 
   // for each EP this library implements register a factory function
-  ep_api->RegisterEpPlugin(*ort_api, *ep_api);
+  auto plugin = std::make_unique<DummyPluginEp>(ApiPtrs{*ort_api, *ep_api});
+  ep_api->RegisterEpPlugin(plugin.release());
+
+  return nullptr;
 }
 
 OrtStatus* ReleaseEpPlugin(OrtEpApi::OrtEpPlugin* ep_plugin) {
+  DummyPluginEp* plugin = static_cast<DummyPluginEp*>(ep_plugin);
+  delete plugin;
+
+  return nullptr;
 }
