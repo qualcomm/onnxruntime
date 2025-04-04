@@ -102,9 +102,9 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
                                  const OrtLogger* logger, OrtEp** ep) {
     // Create the execution provider
     DummyEpFactory* factory = static_cast<DummyEpFactory*>(this_ptr);
-    factory->ort_api.Logger_LogMessage(logger,
-                                       OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                       "Creating Dummy EP", ORT_FILE, __LINE__, __FUNCTION__);
+    RETURN_IF_ERROR(factory->ort_api.Logger_LogMessage(logger,
+                                                       OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
+                                                       "Creating Dummy EP", ORT_FILE, __LINE__, __FUNCTION__));
 
     OrtKeyValuePairs* options = nullptr;
     RETURN_IF_ERROR(factory->ep_api.SessionOptionsConfigOptions(session_options, &options));
@@ -112,7 +112,7 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
     factory->ort_api.ReleaseKeyValuePairs(options);
 
     *ep = dummy_ep.release();
-    nullptr;
+    return nullptr;
   }
 
   static void ReleaseEpImpl(OrtEpFactory* this_ptr, OrtEp* ep) {
@@ -181,7 +181,7 @@ OrtStatus* CreateEpPlugins(const OrtApiBase* ort_api_base) {
 
   // for each EP this library implements register a factory function
   auto plugin = std::make_unique<DummyPluginEp>(ApiPtrs{*ort_api, *ep_api});
-  ep_api->RegisterEpPlugin(plugin.release());
+  RETURN_IF_ERROR(ep_api->RegisterEpPlugin(plugin.release()));
 
   return nullptr;
 }

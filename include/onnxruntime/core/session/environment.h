@@ -95,19 +95,18 @@ class Environment {
    */
   Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
-  // provider bridge EPs. we load the library from the path.
-  Status RegisterEPFactory(const std::filesystem::path& library_path);
+  Status RegisterProviderBridgeEpFactory(const std::filesystem::path& library_path);
 
   Status RegisterPluginEP(OrtEpApi::OrtEpPlugin& ep) {
     plugin_eps_.push_back(&ep);
-    OrtEpFactory* ep_factory = nullptr;
+    OrtEpApi::OrtEpFactory* ep_factory = nullptr;
 
     // TODO: Weird to be calling API funcs here as we need to convert from OrtStatus -> Status -> OrtStatus.
     //       Can we structure this differently? Do we need OrtEpPlugin and OrtEpFactory or could we just register
     //       the factory here?
     OrtStatus* status = ep.CreateEpFactory(&ep, &ep_factory);
     if (status != nullptr) {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to create EP factory. <FIXME: add error>");
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Failed to create EP factory. <FIXME: add error>");
     }
 
     return Status::OK();
@@ -119,7 +118,7 @@ class Environment {
                     const OrtThreadingOptions* tp_options = nullptr,
                     bool create_global_thread_pools = false);
 
-  Status RegisterInternalEPs();
+  Status RegisterInternalEpFactories();
 
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
@@ -129,4 +128,5 @@ class Environment {
 
   std::vector<OrtEpApi::OrtEpPlugin*> plugin_eps_;
   std::vector<OrtEpApi::OrtEpFactory*> plugin_ep_factories_;
+};
 }  // namespace onnxruntime

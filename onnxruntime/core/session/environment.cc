@@ -311,7 +311,7 @@ Internal copy node
 Internal copy node
 )DOC");
 
-    ORT_RETURN_IF_ERROR(RegisterInternalEPs());
+    ORT_RETURN_IF_ERROR(RegisterInternalEpFactories());
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
     // fire off startup telemetry (this call is idempotent)
@@ -348,45 +348,20 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
                 provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
 }
 
-std::unique_ptr<IExecutionProvider> LoadEPFromPath(const std::filesystem::path& path) {
+Status Environment::RegisterProviderBridgeEpFactory(const std::filesystem::path& /*library_path*/) {
   // need to use stuff from \onnxruntime\core\providers\shared_library\provider_host_api.h
   // the setup is slightly different with there being provider_options in the CreateExecutionProviderFactory func
   // as well as UpdateProviderOptions.
   // let's assume we call CreateExecutionProviderFactory with no options and UpdateProviderOptions when we have the
   // SessionOptions.
-  return nullptr;
-}
-
-Status Environment::RegisterEPFactory(const std::filesystem::path& library_path) {
-  // load EP.
-  auto ep = LoadEPFromPath(library_path);
-  if (!ep) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load execution provider from ", library_path);
-  }
-
-  auto ep_devices = ep->GetExecutionDevices(DeviceDiscovery::GetDevices());
-  if (!ep_devices.empty()) {
-    execution_providers_.emplace_back(std::move(ep));
-    execution_devices_.emplace_back(std::move(ep_devices));
-  } else {
-    LOGS_DEFAULT(INFO) << "Execution provider ", ep->Type(), " is not valid for available devices. Unloading.";
-    // TODO: proper unload. just release for now.
-  }
-
   return Status::OK();
 }
 
-// Needs rework.
-// We register the factories with the Environment.
-// We create the EP instances once we have the session options so we can configure an EP at that granularity.
-Status Environment::RegisterInternalEPs() {
+Status Environment::RegisterInternalEpFactories() {
+  // Need to register factory funcs for the built in EPs
   // CPU EP
-  // TODO: Do we need to delay this until session options are available?
-  CPUExecutionProviderInfo epi{session_options_.enable_cpu_mem_arena};
-  auto p_cpu_exec_provider = std::make_unique<CPUExecutionProvider>(epi);
 
 #if defined(USE_DML)
-// TODO: Create EP instance. How
 #endif
 
 #if defined(USE_WEBGPU)

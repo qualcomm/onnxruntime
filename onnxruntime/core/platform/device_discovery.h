@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <unordered_map>
 
 #include "core/common/basic_types.h"
