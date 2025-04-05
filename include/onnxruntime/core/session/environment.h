@@ -20,6 +20,10 @@
 
 struct OrtThreadingOptions;
 namespace onnxruntime {
+class InferenceSession;
+struct IExecutionProviderFactory;
+struct SessionOptions;
+
 /**
    Provides the runtime environment for onnxruntime.
    Create one instance for the duration of execution.
@@ -95,22 +99,23 @@ class Environment {
    */
   Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
-  Status RegisterProviderBridgeEpFactory(const std::filesystem::path& library_path);
+  Status RegisterPluginEpFactory(OrtEpApi::OrtEpFactory& ep_factory) {
+    ep_factories_.push_back(&ep_factory);
+    return Status::OK();
+  }
 
-  Status RegisterPluginEP(OrtEpApi::OrtEpPlugin& ep) {
-    plugin_eps_.push_back(&ep);
-    OrtEpApi::OrtEpFactory* ep_factory = nullptr;
-
-    // TODO: Weird to be calling API funcs here as we need to convert from OrtStatus -> Status -> OrtStatus.
-    //       Can we structure this differently? Do we need OrtEpPlugin and OrtEpFactory or could we just register
-    //       the factory here?
-    OrtStatus* status = ep.CreateEpFactory(&ep, &ep_factory);
-    if (status != nullptr) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Failed to create EP factory. <FIXME: add error>");
-    }
+  Status RegisterLegacyEpFactory(const std::filesystem::path& /*library_path*/) {
+    // create entry to load provider bridge EP from path and be able to call IExecutionProviderFactory.
+    // TODO: Can we pass in session options and the session logger so those are setup upfront so things are more
+    // consistent with the plugin EP creation?
+    // One challenge is there's a `struct Logger` in the provider API which isn't the same as the Logger in the
+    // C API. Can the C API OrtLogger be used?
 
     return Status::OK();
   }
+
+  std::vector<std::unique_ptr<IExecutionProvider>>& CreateExecutionProviders(const OrtSessionOptions& so,
+                                                                             const InferenceSession& session);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
@@ -118,7 +123,14 @@ class Environment {
                     const OrtThreadingOptions* tp_options = nullptr,
                     bool create_global_thread_pools = false);
 
-  Status RegisterInternalEpFactories();
+  // register EPs that are built into the ORT binary
+  std::vector<std::unique_ptr<IExecutionProvider>> CreateInternalEps(const OrtSessionOptions& so);
+  void CreateLegacyEps(const OrtSessionOptions& so, std::vector<std::unique_ptr<IExecutionProvider>>& eps);
+  void CreatePluginEps(const OrtSessionOptions& so, const OrtLogger& session_logger,
+                       std::vector<std::unique_ptr<IExecutionProvider>>& eps);
+
+  // EPs explicitly added to SessionOptions
+  std::vector<std::unique_ptr<IExecutionProvider>> CreateSessionOptionEps(const OrtSessionOptions& so);
 
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
@@ -126,7 +138,7 @@ class Environment {
   bool create_global_thread_pools_{false};
   std::vector<AllocatorPtr> shared_allocators_;
 
-  std::vector<OrtEpApi::OrtEpPlugin*> plugin_eps_;
-  std::vector<OrtEpApi::OrtEpFactory*> plugin_ep_factories_;
+  std::vector<std::shared_ptr<IExecutionProviderFactory>> provider_bridge_ep_factories_;
+  std::vector<OrtEpApi::OrtEpFactory*> ep_factories_;
 };
 }  // namespace onnxruntime

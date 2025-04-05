@@ -6,7 +6,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
-// #include "core/session/environment.h"
+#include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -70,6 +70,9 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
         options == nullptr ? onnxruntime::SessionOptions() : options->value,
         env->GetEnvironment());
   }
+
+  // create EPs now that we have the session and session logger
+  env->GetEnvironment().CreateExecutionProviders(*options, *sess);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains

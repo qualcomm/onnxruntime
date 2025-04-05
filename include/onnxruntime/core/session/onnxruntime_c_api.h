@@ -4967,21 +4967,21 @@ struct OrtApi {
                   bool embed_ep_context_in_model);
   ORT_API2_STATUS(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
 
+  // Making OrtKeyValuePairs opaque so we can control whether the keys/values need to be freed better.
+  ORT_API2_STATUS(CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out);
+  // add pair. values will be copied to guarantee lifetime
+  ORT_API2_STATUS(AddKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key, _In_ const char* value);
+  const char*(ORT_API_CALL* GetKeyValuePair)(_In_ OrtKeyValuePairs* kvps, _In_ const char* key);
+  ORT_API2_STATUS(GetKeyValuePairs, _In_ OrtKeyValuePairs* kvps,
+                  _Outptr_ const char** keys, _Outptr_ const char** values, _Out_ size_t* num_entries);
+
+  ORT_CLASS_RELEASE(KeyValuePairs);
+
   //
   // Plugin Execution Provider API
   //
   // Sadly there's already a GetExecutionProviderApi function... so use 'Ep' to match all the other naming in OrtEpApi
   const OrtEpApi*(ORT_API_CALL* GetEpApi)();
-
-  // Making OrtKeyValuePairs opaque so we can control whether the keys/values need to be freed better.
-  ORT_API2_STATUS(CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out);
-  // add pair. values will be copied to guarantee lifetime
-  ORT_API2_STATUS(AddKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key, _In_ const char* value);
-  const char*(ORT_API_CALL* GetKeyValuePair)(OrtKeyValuePairs* kvps, const char* key);
-  ORT_API2_STATUS(GetKeyValuePairs, OrtKeyValuePairs* kvps, const char** keys, const char** values,
-                  size_t* num_entries);
-
-  ORT_CLASS_RELEASE(KeyValuePairs);
 };
 
 struct OrtEpApi {
@@ -5015,6 +5015,10 @@ struct OrtEpApi {
     //  Many other functions!
   };
 
+  // EP library implements
+  // - OrtStatus* CreateEpFactories(const OrtApiBase* ort_api_base, OrtEnv* env);
+  //   - library creates OrtEpPlugin instance after validating it can get the ORT API for the ORT version it supports
+  // - OrtStatus* ReleaseEpFactory(OrtEpFactory* ep_plugin);
   struct OrtEpFactory {
     // Factory function to create an EP instance.
     //
@@ -5029,21 +5033,12 @@ struct OrtEpApi {
     void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, OrtEp* ep);
   };
 
-  // EP library implements
-  // - OrtStatus* CreateEpPlugins(const OrtApiBase* ort_api_base);
-  //   - library creates OrtEpPlugin instance after validating it can get the ORT API for the ORT version it supports
-  // - OrtStatus* ReleaseEpPlugin(OrtEpPlugin* ep_plugin);
-  struct OrtEpPlugin {
-    // ORT calls to add the EP factory to the Environment
-    OrtStatus*(ORT_API_CALL* CreateEpFactory)(OrtEpPlugin* this_ptr, /*output*/ OrtEpFactory** ep_factory);
-
-    // ORT calls when destructing the Environment.
-    void(ORT_API_CALL* ReleaseEpFactory)(OrtEpPlugin* this_ptr, OrtEpFactory* ep_factory);
-  };
-
-  // Library calls to register OrtEpPlugin with ORT from CreateEpPlugins
+  // Plugin EP library calls this to register OrtEpPlugin with ORT from CreateEpPlugins
   // ORT calls ReleaseEpPlugin when done with it.
-  ORT_API2_STATUS(RegisterEpPlugin, OrtEpPlugin* plugin);
+  ORT_API2_STATUS(RegisterEpFactory, _In_ OrtEnv* env, OrtEpFactory* factory);
+
+  // Provider bridge EP registration.
+  ORT_API2_STATUS(RegisterLegacyEpFactory, _In_ OrtEnv* env, const ORTCHAR_T* library_path);
 
   /// <summary>
   /// Create an OrtExecutionDevice for an EP + HardwareDevice combination.
@@ -5078,9 +5073,6 @@ struct OrtEpApi {
   // Get use_deterministic_compute
 
   // Get custom thread create func/join func/options
-
-  // Get logging function???
-  // - ORT should probably abstract EP from knowing if there was a user providing logging function
 };
 
 /*

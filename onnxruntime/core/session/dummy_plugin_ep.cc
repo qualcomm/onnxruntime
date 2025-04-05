@@ -7,7 +7,6 @@
 
 #include <gsl/span>
 
-using OrtEpPlugin = OrtEpApi::OrtEpPlugin;
 using OrtEpFactory = OrtEpApi::OrtEpFactory;
 using OrtEp = OrtEpApi::OrtEp;
 
@@ -135,60 +134,23 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
   std::vector<std::unique_ptr<DummyEp>> eps_;
 };
 
-struct DummyPluginEp : OrtEpApi::OrtEpPlugin, ApiPtrs {
-  DummyPluginEp(ApiPtrs apis) : ApiPtrs{apis} {
-    // Initialize the plugin
-    CreateEpFactory = CreateEpFactoryImpl;
-    ReleaseEpFactory = ReleaseEpFactoryImpl;
-  }
-
-  ~DummyPluginEp() {
-    // Clean up the plugin
-  }
-
-  static OrtStatus* CreateEpFactoryImpl(OrtEpPlugin* this_ptr, OrtEpFactory** ep_factory) {
-    DummyPluginEp* plugin = static_cast<DummyPluginEp*>(this_ptr);
-
-    auto factory = std::make_unique<DummyEpFactory>(*plugin);
-    *ep_factory = factory.get();
-    plugin->factories_.push_back(std::move(factory));
-
-    return nullptr;
-  }
-
-  static void ReleaseEpFactoryImpl(OrtEpPlugin* this_ptr, OrtEpFactory* ep_factory) {
-    // Release the execution provider
-    DummyPluginEp* plugin = static_cast<DummyPluginEp*>(this_ptr);
-
-    for (auto& factory : plugin->factories_) {
-      if (factory.get() == ep_factory) {
-        factory.reset();  // don't bother removing from vector as this point. probably doesn't matter.
-        break;
-      }
-    }
-  }
-
-  std::vector<std::unique_ptr<DummyEpFactory>> factories_;
-};
-
 //
 // Public symbols
 //
 
-OrtStatus* CreateEpPlugins(const OrtApiBase* ort_api_base) {
+OrtStatus* CreateEpFactories(const OrtApiBase* ort_api_base, OrtEnv* env) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   const OrtEpApi* ep_api = ort_api->GetEpApi();
 
   // for each EP this library implements register a factory function
-  auto plugin = std::make_unique<DummyPluginEp>(ApiPtrs{*ort_api, *ep_api});
-  RETURN_IF_ERROR(ep_api->RegisterEpPlugin(plugin.release()));
+  auto factory = std::make_unique<DummyEpFactory>(ApiPtrs{*ort_api, *ep_api});
+  RETURN_IF_ERROR(ep_api->RegisterEpFactory(env, factory.release()));
 
   return nullptr;
 }
-
-OrtStatus* ReleaseEpPlugin(OrtEpApi::OrtEpPlugin* ep_plugin) {
-  DummyPluginEp* plugin = static_cast<DummyPluginEp*>(ep_plugin);
-  delete plugin;
+OrtStatus* ReleaseEpFactory(OrtEpApi::OrtEpFactory* ep_factory) {
+  DummyEpFactory* factory = static_cast<DummyEpFactory*>(ep_factory);
+  delete factory;
 
   return nullptr;
 }

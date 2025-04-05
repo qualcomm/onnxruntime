@@ -5,10 +5,13 @@
 
 #include "core/framework/allocator_utils.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/plugin_execution_provider.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "core/platform/device_discovery.h"
 #include "core/session/allocator_adapters.h"
+#include "core/session/inference_session.h"
+#include "core/session/abi_session_options_impl.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
@@ -311,8 +314,6 @@ Internal copy node
 Internal copy node
 )DOC");
 
-    ORT_RETURN_IF_ERROR(RegisterInternalEpFactories());
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
     // fire off startup telemetry (this call is idempotent)
     const Env& env = Env::Default();
@@ -348,17 +349,21 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
                 provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
 }
 
-Status Environment::RegisterProviderBridgeEpFactory(const std::filesystem::path& /*library_path*/) {
+// Can we add the path to the config params in Session Options instead of passing it in?
+std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateSessionOptionEps(const OrtSessionOptions& so) {
   // need to use stuff from \onnxruntime\core\providers\shared_library\provider_host_api.h
   // the setup is slightly different with there being provider_options in the CreateExecutionProviderFactory func
   // as well as UpdateProviderOptions.
   // let's assume we call CreateExecutionProviderFactory with no options and UpdateProviderOptions when we have the
   // SessionOptions.
-  return Status::OK();
+
+  for (const auto& f : so.provider_factories) {
+  }
+
+  return {};
 }
 
-Status Environment::RegisterInternalEpFactories() {
-  // Need to register factory funcs for the built in EPs
+std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateInternalEps(const OrtSessionOptions& /*so*/) {
   // CPU EP
 
 #if defined(USE_DML)
@@ -367,7 +372,47 @@ Status Environment::RegisterInternalEpFactories() {
 #if defined(USE_WEBGPU)
 #endif
 
-  return Status::OK();
+  return {};
+}
+
+void Environment::CreateLegacyEps(const OrtSessionOptions& so,
+                                  std::vector<std::unique_ptr<IExecutionProvider>>& eps) {
+  for (const auto& f : provider_bridge_ep_factories_) {
+    eps.push_back(f->CreateProvider());
+    // TODO: how should SessionOptions and the logger be set in the EP?
+  }
+}
+
+void Environment::CreatePluginEps(const OrtSessionOptions& so,
+                                  const OrtLogger& session_logger,
+                                  std::vector<std::unique_ptr<IExecutionProvider>>& eps) {
+  for (auto* ep_factory : ep_factories_) {
+    OrtEpApi::OrtEp* ep = nullptr;
+    ep_factory->CreateEp(ep_factory, &so, &session_logger, &ep);
+    if (ep) {
+      eps.push_back(std::make_unique<PluginEp>(ep));
+    }
+  }
+}
+
+std::vector<std::unique_ptr<IExecutionProvider>>& Environment::CreateExecutionProviders(
+    const OrtSessionOptions& so, const InferenceSession& session) {
+  // If EPs are explicitly specified in session options, use them.
+  if (!so.provider_factories.empty()) {
+    return CreateSessionOptionEps(so);
+  }
+
+  // internal
+  auto eps = CreateInternalEps(so);
+
+  // provider bridge
+  CreateLegacyEps(so, eps);
+
+  // plugin
+  const OrtLogger& session_logger = *reinterpret_cast<const OrtLogger*>(session.GetLogger());
+  CreatePluginEps(so, session_logger, eps);
+
+  return eps;
 }
 
 }  // namespace onnxruntime
