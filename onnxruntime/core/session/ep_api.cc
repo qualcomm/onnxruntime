@@ -11,7 +11,8 @@
 // #include "core/graph/model.h"
 // #include "core/graph/model_editor_api_types.h"
 // #include "core/graph/onnx_protobuf.h"
-// #include "core/session/abi_session_options_impl.h"
+#include "core/session/abi_key_value_pairs.h"
+#include "core/session/abi_session_options_impl.h"
 // #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
@@ -19,27 +20,40 @@
 #include "core/session/environment.h"
 
 using namespace onnxruntime;
-
 namespace OrtExecutionProviderApi {
 ORT_API_STATUS_IMPL(RegisterEpFactory, OrtEnv* env, OrtEpApi::OrtEpFactory* factory) {
   API_IMPL_BEGIN
-  return env->GetEnvironment().RegisterPluginEpFactory(*factory);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().RegisterPluginEpFactory(*factory));
+  return nullptr;
   API_IMPL_END
 }
 ORT_API_STATUS_IMPL(RegisterLegacyEpFactory, OrtEnv* env, const ORTCHAR_T* library_path) {
   API_IMPL_BEGIN
-  env->GetEnvironment().RegisterLegacyEpFactory(*library_path);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().RegisterLegacyEpFactory(library_path));
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(CreateExecutionDevice, _In_ /*const*/ OrtEpApi::OrtEp* ep, _In_ const OrtHardwareDevice* hardware_device,
+ORT_API_STATUS_IMPL(CreateExecutionDevice,
+                    _In_ /*const*/ OrtEpApi::OrtEp* ep,
+                    _In_ const OrtHardwareDevice* hardware_device,
                     _In_reads_(num_ep_device_properties) const char** ep_device_properties_keys,
                     _In_reads_(num_ep_device_properties) const char** ep_device_properties_values,
                     _In_ size_t num_ep_device_properties,
                     _Out_ OrtExecutionDevice** ort_execution_device) {
   API_IMPL_BEGIN
+  auto ed = std::make_unique<OrtExecutionDevice>();
+  ed->name = ep->GetName(ep);
+  ed->execution_vendor = ep->GetVendor(ep);
+  ed->device = hardware_device;
+  // this makes the ownership semantics a little strange. who releases this memory?
+  // would an opaque type work better?
+  OrtApis::CreateKeyValuePairs(&ed->properties);
+  for (size_t i = 0; i < num_ep_device_properties; ++i) {
+    OrtApis::AddKeyValuePair(ed->properties, ep_device_properties_keys[i], ep_device_properties_values[i]);
+  }
 
+  *ort_execution_device = ed.release();
   return nullptr;
   API_IMPL_END
 }
@@ -47,18 +61,24 @@ ORT_API_STATUS_IMPL(CreateExecutionDevice, _In_ /*const*/ OrtEpApi::OrtEp* ep, _
 ORT_API_STATUS_IMPL(SessionOptionsConfigOptions, _In_ const OrtSessionOptions* session_options,
                     _Out_ OrtKeyValuePairs** options) {
   API_IMPL_BEGIN
+  OrtKeyValuePairs* kvps = nullptr;
+  OrtApis::CreateKeyValuePairs(&kvps);
+  kvps->Copy(session_options->value.config_options.configurations);
+
+  *options = kvps;
 
   return nullptr;
   API_IMPL_END
 }
 
 // Get ConfigOptions by key. Returns null in value if key not found (vs pointer to empty string if found).
-ORT_API_STATUS_IMPL(SessionOptionsConfigOption, _In_ const OrtSessionOptions* session_options, _In_ const char* key,
-                    _Out_ const char** value) {
-  API_IMPL_BEGIN
+ORT_API(const char*, SessionOptionsConfigOption, _In_ const OrtSessionOptions* session_options, _In_ const char* key) {
+  const auto& entries = session_options->value.config_options.configurations;
+  if (auto it = entries.find(key), end = entries.end(); it != end) {
+    return it->second.c_str();
+  }
 
   return nullptr;
-  API_IMPL_END
 }
 
 static constexpr OrtEpApi ort_ep_api = {

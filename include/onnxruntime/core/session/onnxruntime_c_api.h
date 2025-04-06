@@ -427,12 +427,13 @@ typedef struct OrtHardwareDevice {
   const OrtKeyValuePairs* properties;
 } OrtHardwareDevice;
 
-// TODO: struct at API level or opaque type with accessors?
+// TODO: struct at API level or opaque type with accessors? the `properties` field need to be allocated so
+// it might be simpler to make this an opaque type so the 'release' call is more intuitive.s
 typedef struct OrtExecutionDevice {
   const char* name;              // EP name
   const char* execution_vendor;  // EP vendor
   const OrtHardwareDevice* device;
-  const OrtKeyValuePairs* properties;  // metadata from EP
+  OrtKeyValuePairs* properties;  // metadata from EP
 } OrtExecutionDevice;
 
 /** \brief Algorithm to use for cuDNN Convolution Op
@@ -4968,12 +4969,13 @@ struct OrtApi {
   ORT_API2_STATUS(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
 
   // Making OrtKeyValuePairs opaque so we can control whether the keys/values need to be freed better.
-  ORT_API2_STATUS(CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out);
+  void(ORT_API_CALL* CreateKeyValuePairs)(_Outptr_ OrtKeyValuePairs** out);
   // add pair. values will be copied to guarantee lifetime
-  ORT_API2_STATUS(AddKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key, _In_ const char* value);
+  void(ORT_API_CALL* AddKeyValuePair)(_In_ OrtKeyValuePairs* kvps, _In_ const char* key, _In_ const char* value);
   const char*(ORT_API_CALL* GetKeyValuePair)(_In_ OrtKeyValuePairs* kvps, _In_ const char* key);
-  ORT_API2_STATUS(GetKeyValuePairs, _In_ OrtKeyValuePairs* kvps,
-                  _Outptr_ const char** keys, _Outptr_ const char** values, _Out_ size_t* num_entries);
+  void(ORT_API_CALL* GetKeyValuePairs)(_In_ OrtKeyValuePairs* kvps,
+                                       _Outptr_ const char** keys, _Outptr_ const char** values,
+                                       _Out_ size_t* num_entries);
 
   ORT_CLASS_RELEASE(KeyValuePairs);
 
@@ -5063,9 +5065,8 @@ struct OrtEpApi {
   ORT_API2_STATUS(SessionOptionsConfigOptions, _In_ const OrtSessionOptions* session_options,
                   _Out_ OrtKeyValuePairs** options);
 
-  // Get ConfigOptions by key. Returns null in value if key not found (vs pointer to empty string if found).
-  ORT_API2_STATUS(SessionOptionsConfigOption, _In_ const OrtSessionOptions* session_options, _In_ const char* key,
-                  _Out_ const char** value);
+  // Get ConfigOptions by key. Returns null if key not found (vs pointer to empty string if found).
+  const char*(ORT_API_CALL* SessionOptionsConfigOption)(_In_ const OrtSessionOptions* so, _In_ const char* key);
 
   // Get graph_optimization_level
   // - EPs will implement optimizers so need to be aware of this

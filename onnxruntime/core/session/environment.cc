@@ -350,17 +350,18 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 }
 
 // Can we add the path to the config params in Session Options instead of passing it in?
-std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateSessionOptionEps(const OrtSessionOptions& so) {
-  // need to use stuff from \onnxruntime\core\providers\shared_library\provider_host_api.h
-  // the setup is slightly different with there being provider_options in the CreateExecutionProviderFactory func
-  // as well as UpdateProviderOptions.
-  // let's assume we call CreateExecutionProviderFactory with no options and UpdateProviderOptions when we have the
-  // SessionOptions.
+std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateSessionOptionEps(const OrtSessionOptions& so,
+                                                                                     const logging::Logger& logger) {
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.reserve(so.provider_factories.size());
 
   for (const auto& f : so.provider_factories) {
+    eps.push_back(f->CreateProvider());
+    // TODO: How do we pass in SessionOption config values?
+    eps.back()->SetLogger(&logger);
   }
 
-  return {};
+  return eps;
 }
 
 std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateInternalEps(const OrtSessionOptions& /*so*/) {
@@ -375,7 +376,7 @@ std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateInternalEps(
   return {};
 }
 
-void Environment::CreateLegacyEps(const OrtSessionOptions& so,
+void Environment::CreateLegacyEps(const OrtSessionOptions& /*so*/,
                                   std::vector<std::unique_ptr<IExecutionProvider>>& eps) {
   for (const auto& f : provider_bridge_ep_factories_) {
     eps.push_back(f->CreateProvider());
@@ -390,16 +391,16 @@ void Environment::CreatePluginEps(const OrtSessionOptions& so,
     OrtEpApi::OrtEp* ep = nullptr;
     ep_factory->CreateEp(ep_factory, &so, &session_logger, &ep);
     if (ep) {
-      eps.push_back(std::make_unique<PluginEp>(ep));
+      eps.push_back(std::make_unique<PluginEp>(*ep_factory, *ep));
     }
   }
 }
 
-std::vector<std::unique_ptr<IExecutionProvider>>& Environment::CreateExecutionProviders(
+std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateExecutionProviders(
     const OrtSessionOptions& so, const InferenceSession& session) {
   // If EPs are explicitly specified in session options, use them.
   if (!so.provider_factories.empty()) {
-    return CreateSessionOptionEps(so);
+    return CreateSessionOptionEps(so, *session.GetLogger());
   }
 
   // internal
@@ -408,7 +409,6 @@ std::vector<std::unique_ptr<IExecutionProvider>>& Environment::CreateExecutionPr
   // provider bridge
   CreateLegacyEps(so, eps);
 
-  // plugin
   const OrtLogger& session_logger = *reinterpret_cast<const OrtLogger*>(session.GetLogger());
   CreatePluginEps(so, session_logger, eps);
 

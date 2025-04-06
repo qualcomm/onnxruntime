@@ -569,11 +569,11 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetEpContextEmbedMode, _In_ OrtModel
                     bool embed_ep_context_in_model);
 ORT_API_STATUS_IMPL(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
 
-ORT_API_STATUS_IMPL(CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out);
-ORT_API_STATUS_IMPL(AddKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key, _In_ const char* value);
+ORT_API(void, CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out);
+ORT_API(void, AddKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key, _In_ const char* value);
 ORT_API(const char*, GetKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key);
-ORT_API_STATUS_IMPL(GetKeyValuePairs, _In_ OrtKeyValuePairs* kvps,
-                    _Outptr_ const char** keys, _Outptr_ const char** values, _Out_ size_t* num_entries);
+ORT_API(void, GetKeyValuePairs, _In_ OrtKeyValuePairs* kvps,
+        _Outptr_ const char** keys, _Outptr_ const char** values, _Out_ size_t* num_entries);
 ORT_API(void, ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs*);
 
 ORT_API(const OrtEpApi*, GetEpApi);

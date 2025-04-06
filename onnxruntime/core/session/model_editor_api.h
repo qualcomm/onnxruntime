@@ -6,7 +6,6 @@
 #include "core/session/onnxruntime_c_api.h"
 namespace OrtModelEditorAPI {
 
-
 // implementation that returns the API struct
 ORT_API(const OrtModelEditorApi*, GetModelEditorApi);
 

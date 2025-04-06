@@ -32,6 +32,7 @@
 #include "core/graph/graph.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/providers/get_execution_providers.h"
+#include "core/session/abi_key_value_pairs.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/environment.h"
@@ -2633,48 +2634,15 @@ ORT_API_STATUS_IMPL(OrtApis::CompileModel, _In_ const OrtEnv* env,
   API_IMPL_END
 }
 
-// struct to provider ownership via std::string as well as support the GetKeyValuePairs
-// TODO: Validate adding entries doesn't invalidate existing pointers. assuming std::unordered_map is smart enough to
-//       std::move any strings in it.
-struct OrtKeyValuePairs {
-  std::unordered_map<std::string, std::string> entries;
-  std::vector<const char*> keys;
-  std::vector<const char*> values;
-  void Add(const char* key, const char* value) {
-    std::string key_str(key);
-    auto iter_inserted = entries.insert({std::move(key_str), std::string(value)});
-    bool inserted = iter_inserted.second;
-    if (inserted) {
-      const auto& entry = *iter_inserted.first;
-      keys.push_back(entry.first.c_str());
-      values.push_back(entry.second.c_str());
-    } else {
-      // rebuild is easier and this is not expected to be a common case. otherwise we need to to strcmp on all entries.
-      keys.clear();
-      values.clear();
-      for (const auto& entry : entries) {
-        keys.push_back(entry.first.c_str());
-        values.push_back(entry.second.c_str());
-      }
-    }
-  }
-};
-
-ORT_API_STATUS_IMPL(OrtApis::CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out) {
-  API_IMPL_BEGIN
+ORT_API(void, OrtApis::CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out) {
   auto kvps = std::make_unique<OrtKeyValuePairs>();
   *out = reinterpret_cast<OrtKeyValuePairs*>(kvps.release());
-  return nullptr;
-  API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::AddKeyValuePair, _In_ OrtKeyValuePairs* kvps,
-                    _In_ const char* key, _In_ const char* value) {
-  API_IMPL_BEGIN
+ORT_API(void, OrtApis::AddKeyValuePair, _In_ OrtKeyValuePairs* kvps,
+        _In_ const char* key, _In_ const char* value) {
   auto& entries = *reinterpret_cast<OrtKeyValuePairs*>(kvps);
-  entries[key] = value;  // TODO: Validate if the entries move the std::string buffer doesn't change and invalidate the const char*
-  return nullptr;
-  API_IMPL_END
+  entries.Add(key, value);
 }
 
 ORT_API(const char*, OrtApis::GetKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key) {
@@ -2687,19 +2655,19 @@ ORT_API(const char*, OrtApis::GetKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_
   return value;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetKeyValuePairs, _In_ OrtKeyValuePairs* kvps,
-                    _Outptr_ const char** keys, _Outptr_ const char** values, _Out_ size_t* num_entries) {
-  API_IMPL_BEGIN
+ORT_API(void, OrtApis::GetKeyValuePairs, _In_ OrtKeyValuePairs* kvps,
+        _Outptr_ const char** keys, _Outptr_ const char** values, _Out_ size_t* num_entries) {
   keys = kvps->keys.data();
   values = kvps->values.data();
   *num_entries = kvps->entries.size();
-
-  return nullptr;
-  API_IMPL_END
 }
 
 ORT_API(void, OrtApis::ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs* kvps) {
   delete kvps;
+}
+
+ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
+  return OrtExecutionProviderApi::GetEpApi();
 }
 
 //

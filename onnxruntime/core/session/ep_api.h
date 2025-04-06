@@ -15,14 +15,15 @@ ORT_API_STATUS_IMPL(RegisterLegacyEpFactory, _In_ OrtEnv* env, const ORTCHAR_T* 
 
 ORT_API_STATUS_IMPL(CreateExecutionDevice, _In_ /*const*/ OrtEpApi::OrtEp* ep,
                     _In_ const OrtHardwareDevice* hardware_device,
-                    _In_ const OrtKeyValuePairs* ep_device_properties,
+                    _In_reads_(num_ep_device_properties) const char** ep_device_properties_keys,
+                    _In_reads_(num_ep_device_properties) const char** ep_device_properties_values,
+                    _In_ size_t num_ep_device_properties,
                     _Out_ OrtExecutionDevice** ort_execution_device);
 
 ORT_API_STATUS_IMPL(SessionOptionsConfigOptions, _In_ const OrtSessionOptions* session_options,
                     _Out_ OrtKeyValuePairs** options);
 
 // Get ConfigOptions by key. Returns null in value if key not found (vs pointer to empty string if found).
-ORT_API_STATUS_IMPL(SessionOptionsConfigOption, _In_ const OrtSessionOptions* session_options, _In_ const char* key,
-                    _Out_ const char** value);
+ORT_API(const char*, SessionOptionsConfigOption, _In_ const OrtSessionOptions* session_options, _In_ const char* key);
 
 }  // namespace OrtExecutionProviderApi

@@ -72,7 +72,9 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   }
 
   // create EPs now that we have the session and session logger
-  env->GetEnvironment().CreateExecutionProviders(*options, *sess);
+  // TODO: we need a mutable Env but adding a whole new set of things at the API level is a lot.
+  //       figure out the best way to support this. can we split out session creation from EP init and model load?
+  const_cast<OrtEnv*>(env)->GetEnvironment().CreateExecutionProviders(*options, *sess);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains

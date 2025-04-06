@@ -11,11 +11,16 @@ namespace onnxruntime {
 // Wrapper for OrtEpApi::OrtEp -> IExecutionProvider
 class PluginEp : public IExecutionProvider {
  public:
-  PluginEp(OrtEpApi::OrtEp& ep)
-      : IExecutionProvider(ep.GetName(&ep)), ep_{ep} {
+  PluginEp(OrtEpApi::OrtEpFactory& factory, OrtEpApi::OrtEp& ep)
+      : IExecutionProvider(ep.GetName(&ep)), ep_factory_{factory}, ep_{ep} {
+  }
+
+  ~PluginEp() {
+    ep_factory_.ReleaseEp(&ep_factory_, &ep_);
   }
 
  private:
+  OrtEpApi::OrtEpFactory& ep_factory_;
   OrtEpApi::OrtEp& ep_;
 };
 }  // namespace onnxruntime

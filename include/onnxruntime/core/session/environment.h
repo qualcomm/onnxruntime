@@ -114,8 +114,8 @@ class Environment {
     return Status::OK();
   }
 
-  std::vector<std::unique_ptr<IExecutionProvider>>& CreateExecutionProviders(const OrtSessionOptions& so,
-                                                                             const InferenceSession& session);
+  std::vector<std::unique_ptr<IExecutionProvider>> CreateExecutionProviders(const OrtSessionOptions& so,
+                                                                            const InferenceSession& session);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
@@ -130,7 +130,8 @@ class Environment {
                        std::vector<std::unique_ptr<IExecutionProvider>>& eps);
 
   // EPs explicitly added to SessionOptions
-  std::vector<std::unique_ptr<IExecutionProvider>> CreateSessionOptionEps(const OrtSessionOptions& so);
+  std::vector<std::unique_ptr<IExecutionProvider>> CreateSessionOptionEps(const OrtSessionOptions& so,
+                                                                          const logging::Logger& logger);
 
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
