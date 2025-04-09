@@ -63,7 +63,7 @@ ORT_API(const char*, ExecutionDevice_EpVendor, _In_ const OrtExecutionDevice* ex
   return exec_device->ep_vendor.c_str();
 }
 
-ORT_API(const OrtKeyValuePairs*, ExecutionDevice_Properties, _In_ const OrtExecutionDevice* exec_device) {
+ORT_API(const OrtKeyValuePairs*, ExecutionDevice_EpProperties, _In_ const OrtExecutionDevice* exec_device) {
   return &exec_device->properties;
 }
 

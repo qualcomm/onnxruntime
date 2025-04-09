@@ -17,7 +17,7 @@ ORT_API(const OrtEpApi*, GetEpApi);
 ORT_API_STATUS_IMPL(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, const ORTCHAR_T* path, const char* ep_name);
 ORT_API_STATUS_IMPL(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* ep_name);
 
-// OrtExecutionDevice accessors
+// OrtHardwareDevice and OrtExecutionDevice accessors
 ORT_API(OrtHardwareDeviceType, HardwareDevice_Type, _In_ const OrtHardwareDevice* device);
 ORT_API(const char*, HardwareDevice_Vendor, _In_ const OrtHardwareDevice* device);
 ORT_API(const OrtKeyValuePairs*, HardwareDevice_Properties, _In_ const OrtHardwareDevice* device);
