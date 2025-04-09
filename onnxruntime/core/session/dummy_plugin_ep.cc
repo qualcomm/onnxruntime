@@ -26,8 +26,6 @@ struct ApiPtrs {
 struct DummyEp : OrtEp, ApiPtrs {
   DummyEp(ApiPtrs apis, OrtKeyValuePairs& /*config_options*/) : ApiPtrs(apis) {
     // Initialize the execution provider
-    GetName = GetNameImpl;
-    GetVendor = GetVendorImpl;
 
     // TODO: Get EP specific settings out of config_options.
     // EP should copy any values it needs from options as factory will release the OrtKeyValuePairs instance which may
@@ -38,22 +36,44 @@ struct DummyEp : OrtEp, ApiPtrs {
     // Clean up the execution provider
   }
 
-  static const char* GetNameImpl(OrtEp* this_ptr) {
-    DummyEp* ep = static_cast<DummyEp*>(this_ptr);
-    return ep->name_.c_str();
+  std::string name_;
+};
+
+struct DummyEpFactory : OrtEpFactory, ApiPtrs {
+  DummyEpFactory(const char* ep_name, ApiPtrs apis) : ApiPtrs(apis), ep_name_{ep_name} {
+    Initialize = InitializeImpl;
+    Shutdown = ShutdownImpl;
+    GetName = GetNameImpl;
+    GetVendor = GetVendorImpl;
+    GetExecutionDevices = GetExecutionDevicesImpl;
+    CreateEp = CreateEpImpl;
+    ReleaseEp = ReleaseEpImpl;
   }
 
-  static const char* GetVendorImpl(OrtEp* this_ptr) {
-    DummyEp* ep = static_cast<DummyEp*>(this_ptr);
+  static OrtStatus* InitializeImpl() noexcept {
+    return nullptr;  // no initialization needed
+  }
+
+  static OrtStatus* ShutdownImpl() noexcept {
+    return nullptr;  // no shutdown needed
+  }
+
+  static const char* GetNameImpl(OrtEpFactory* this_ptr) {
+    DummyEpFactory* ep = static_cast<DummyEpFactory*>(this_ptr);
+    return ep->ep_name_.c_str();
+  }
+
+  static const char* GetVendorImpl(OrtEpFactory* this_ptr) {
+    DummyEpFactory* ep = static_cast<DummyEpFactory*>(this_ptr);
     return ep->vendor_.c_str();
   }
 
-  static OrtStatus* GetExecutionDevicesImpl(OrtEp* this_ptr,
+  static OrtStatus* GetExecutionDevicesImpl(OrtEpFactory* this_ptr,
                                             const OrtHardwareDevice** devices,
                                             size_t num_devices,
                                             OrtExecutionDevice** execution_devices,
                                             size_t* num_execution_devices) {
-    DummyEp* ep = static_cast<DummyEp*>(this_ptr);
+    DummyEpFactory* ep = static_cast<DummyEpFactory*>(this_ptr);
     *execution_devices = nullptr;
     *num_execution_devices = 0;
 
@@ -63,7 +83,8 @@ struct DummyEp : OrtEp, ApiPtrs {
         continue;  // should never happen
       }
 
-      if (device->type == OrtHardwareDeviceType::CPU) {
+      // FIXME: OrtHardwareDevice needs its own accessors
+      if (ep->ep_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::CPU) {
         OrtExecutionDevice* execution_device = nullptr;
         std::vector<const char*> keys;
         std::vector<const char*> values;
@@ -76,7 +97,7 @@ struct DummyEp : OrtEp, ApiPtrs {
             ep->ep_api.CreateExecutionDevice(this_ptr, device, keys.data(), values.data(), keys.size(),
                                              &execution_device));
 
-        *execution_devices = execution_device;
+        *execution_devices = execution_device;  // ORT takes ownership
         *num_execution_devices = 1;
 
         // only one. implementation could potentially have multiple devices
@@ -87,18 +108,8 @@ struct DummyEp : OrtEp, ApiPtrs {
     return nullptr;
   }
 
-  std::string name_;
-  std::string vendor_;
-};
-
-struct DummyEpFactory : OrtEpFactory, ApiPtrs {
-  DummyEpFactory(ApiPtrs apis) : ApiPtrs(apis) {
-    CreateEp = CreateEpImpl;
-    ReleaseEp = ReleaseEpImpl;
-  }
-
-  static OrtStatus* CreateEpImpl(OrtEpFactory* this_ptr, const OrtSessionOptions* session_options,
-                                 const OrtLogger* logger, OrtEp** ep) {
+  static OrtStatus* CreateEpImpl(OrtEpFactory* this_ptr, const OrtExecutionDevice* /*execution_device*/,
+                                 const OrtSessionOptions* session_options, const OrtLogger* logger, OrtEp** ep) {
     // Create the execution provider
     DummyEpFactory* factory = static_cast<DummyEpFactory*>(this_ptr);
     RETURN_IF_ERROR(factory->ort_api.Logger_LogMessage(logger,
@@ -107,6 +118,12 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
 
     OrtKeyValuePairs* options = nullptr;
     RETURN_IF_ERROR(factory->ep_api.SessionOptionsConfigOptions(session_options, &options));
+
+    // look for any options using this prefix
+    const std::string ep_options_prefix = "ep." + factory->ep_name_ + ".";
+
+    // use properties from execution_device if needed
+
     auto dummy_ep = std::make_unique<DummyEp>(*factory, *options);
     factory->ort_api.ReleaseKeyValuePairs(options);
 
@@ -126,31 +143,18 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
     }
   }
 
-  OrtStatus* GetExecutionProviderName(const char** name) {
-    *name = "DummyPluginEP";
-    return nullptr;
-  }
-
-  std::vector<std::unique_ptr<DummyEp>> eps_;
+  const std::string ep_name_;                  // EP name library was registered with
+  const std::string vendor_{"Contoso"};        // EP vendor name
+  std::vector<std::unique_ptr<DummyEp>> eps_;  // EP instances created by this factory
 };
 
 //
-// Public symbols
+// Public symbol
 //
-
-OrtStatus* CreateEpFactories(const OrtApiBase* ort_api_base, OrtEnv* env) {
+OrtEpFactory* GetEpFactory(const char* ep_name, const OrtApiBase* ort_api_base) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   const OrtEpApi* ep_api = ort_api->GetEpApi();
+  static DummyEpFactory ep_plugin(ep_name, ApiPtrs{*ort_api, *ep_api});
 
-  // for each EP this library implements register a factory function
-  auto factory = std::make_unique<DummyEpFactory>(ApiPtrs{*ort_api, *ep_api});
-  RETURN_IF_ERROR(ep_api->RegisterEpFactory(env, factory.release()));
-
-  return nullptr;
-}
-OrtStatus* ReleaseEpFactory(OrtEpApi::OrtEpFactory* ep_factory) {
-  DummyEpFactory* factory = static_cast<DummyEpFactory*>(ep_factory);
-  delete factory;
-
-  return nullptr;
+  return &ep_plugin;
 }

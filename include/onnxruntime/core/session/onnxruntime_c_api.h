@@ -421,21 +421,6 @@ typedef enum OrtExecutionPreference {
   MODEL_BASED
 } OrtExecutionPreference;
 
-typedef struct OrtHardwareDevice {
-  OrtHardwareDeviceType type;
-  const char* vendor;
-  const OrtKeyValuePairs* properties;
-} OrtHardwareDevice;
-
-// TODO: struct at API level or opaque type with accessors? the `properties` field need to be allocated so
-// it might be simpler to make this an opaque type so the 'release' call is more intuitive.s
-typedef struct OrtExecutionDevice {
-  const char* name;              // EP name
-  const char* execution_vendor;  // EP vendor
-  const OrtHardwareDevice* device;
-  OrtKeyValuePairs* properties;  // metadata from EP
-} OrtExecutionDevice;
-
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
 typedef enum OrtCudnnConvAlgoSearch {
@@ -4988,24 +4973,9 @@ struct OrtApi {
 
 struct OrtEpApi {
   struct OrtEp {
-    // GetDeviceSupportInfo allows the EP to find devices it supports. It should call CreateExecutionDevice for each
-    // one and return in execution_devices.
-    //
-    // OrtStatus* CreateExecutionDevice(OrtEp* ep, const HardwareDevice*, OrtKeyValuePairs* ep_device_properties,
-    //                                  OrtExecutionDevice** ort_execution_device);
-    //
-    // Release may not be needed as the type is internal and we take ownership of the instance when returned by
-    // CreateExecutionDevice
-    // void ReleaseExecutionDevice(OrtExecutionDevice* ort_execution_device);
-
-    const char*(ORT_API_CALL* GetName)(OrtEp* this_ptr);    // return EP name
-    const char*(ORT_API_CALL* GetVendor)(OrtEp* this_ptr);  // return EP vendor
-
-    OrtStatus*(ORT_API_CALL* GetExecutionDevices)(_In_ /* const? */ OrtEp* this_ptr,
-                                                  _In_reads_(num_devices) const OrtHardwareDevice** devices,
-                                                  _In_ size_t num_devices,
-                                                  OrtExecutionDevice** execution_devices,
-                                                  size_t* num_execution_devices);
+    // Must be initialized to ORT_API_VERSION implementation was compiled with.
+    // ORT will use this to ensure it does not attempt to use functionality that was not available at the time.
+    uint32_t ort_version_supported;
 
     // OrtStatus* GetCapability(OrtEp* ep, const OrtGraph* graph,
     //                          size_t* num_supported_subgraphs,
@@ -5017,43 +4987,79 @@ struct OrtEpApi {
     //  Many other functions!
   };
 
-  // EP library implements
-  // - OrtStatus* CreateEpFactories(const OrtApiBase* ort_api_base, OrtEnv* env);
-  //   - library creates OrtEpPlugin instance after validating it can get the ORT API for the ORT version it supports
-  // - OrtStatus* ReleaseEpFactory(OrtEpFactory* ep_plugin);
   struct OrtEpFactory {
-    // Factory function to create an EP instance.
+    // Must be initialized to ORT_API_VERSION implementation was compiled with.
+    // ORT will use this to ensure it does not attempt to use functionality that was not available at the time.
+    uint32_t ort_version_supported;
+
+    ORT_API2_STATUS(Initialize);
+    ORT_API2_STATUS(Shutdown);
+
+    const char*(ORT_API_CALL* GetName)(OrtEpFactory* this_ptr);    // return name EP was registered with
+    const char*(ORT_API_CALL* GetVendor)(OrtEpFactory* this_ptr);  // return EP vendor
+
+    // Return ExecutionDevices this OrtEpFactory can create an OrtEp to utilize
+    // The implementation should call OrtEpApi::CreateExecutionDevice and return in execution_devices.
+    OrtStatus*(ORT_API_CALL* GetExecutionDevices)(_In_ /* const? */ OrtEpFactory* this_ptr,
+                                                  _In_reads_(num_devices) const OrtHardwareDevice** devices,
+                                                  _In_ size_t num_devices,
+                                                  OrtExecutionDevice** execution_devices,
+                                                  size_t* num_execution_devices);
+
+    // Function to create an EP instance for use in a session.
     //
-    //   Factory function can read config key/value pairs from OrtSessionOptions.
-    //   NOTE: This is generic so there are no provider specific options. Existing EPs will need to be updated to read
+    //   registered_name is the value provided in RegisterExecutionProviderLibrary
+    //     Any configuration values for the EP should be in OrtSessionOptions.config_options which can be retrieved
+    //     with OrtEpApi::SessionOptionsConfigOptions and will have the prefix 'ep.<registered_name>.'
+    //   execution_device is what was selected for the session
+    //     - allows one library to use support devices
+    //   session_options so implementation can read config key/value pairs from OrtSessionOptions and any other relevant values
+    //     - NOTE: This is generic so there are no provider specific options.
+    //     Existing EPs will need to be updated to read
     //         all their options from OrtSessionOptions.ConfigOptions.
     //   logger is Session logger. EP instance should use for output.
-    OrtStatus*(ORT_API_CALL* CreateEp)(_In_ OrtEpFactory* this_ptr, _In_ const OrtSessionOptions* session_options,
+    OrtStatus*(ORT_API_CALL* CreateEp)(_In_ OrtEpFactory* this_ptr,
+                                       _In_ const OrtExecutionDevice* execution_device,
+                                       _In_ const OrtSessionOptions* session_options,
                                        _In_ const OrtLogger* logger, _Out_ OrtEp** ep);
 
     // Function ORT calls to release an EP instance.
     void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, OrtEp* ep);
   };
 
-  // Plugin EP library calls this to register OrtEpPlugin with ORT from CreateEpPlugins
-  // ORT calls ReleaseEpPlugin when done with it.
-  ORT_API2_STATUS(RegisterEpFactory, _In_ OrtEnv* env, OrtEpFactory* factory);
+  // ORT will load the library and call the 'GetEpFactory' function which should match GetEpPluginFn.
+  // ORT will call ep_plugin->Initialize before any other OrtEpFactory functions.
+  typedef OrtEpFactory* (*GetEpFactoryFn)(_In_ const char* ep_name, _In_ const OrtApiBase* ort_api_base);
+  ORT_API2_STATUS(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const ORTCHAR_T* path,
+                  _In_ const char* ep_name);
+  // ORT will call ep_plugin->Shutdown prior to unloading the library.
+  ORT_API2_STATUS(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* ep_name);
 
-  // Provider bridge EP registration.
-  ORT_API2_STATUS(RegisterLegacyEpFactory, _In_ OrtEnv* env, const ORTCHAR_T* library_path);
+  // OrtExecutionDevice accessors
+  OrtHardwareDeviceType(ORT_API_CALL* HardwareDevice_Type)(_In_ const OrtHardwareDevice* device);
+  const char*(ORT_API_CALL* HardwareDevice_Vendor)(_In_ const OrtHardwareDevice* device);
+  const OrtKeyValuePairs*(ORT_API_CALL* HardwareDevice_Properties)(_In_ const OrtHardwareDevice* device);
+
+  const char*(ORT_API_CALL* ExecutionDevice_EpName)(_In_ const OrtExecutionDevice* device);
+  const char*(ORT_API_CALL* ExecutionDevice_EpVendor)(_In_ const OrtExecutionDevice* device);
+  const OrtKeyValuePairs*(ORT_API_CALL* ExecutionDevice_EpProperties)(_In_ const OrtExecutionDevice* device);
+  const OrtHardwareDevice*(ORT_API_CALL* ExecutionDevice_Device)(_In_ const OrtExecutionDevice* device);
 
   /// <summary>
   /// Create an OrtExecutionDevice for an EP + HardwareDevice combination.
   /// </summary>
-  /// <param name="ep">Execution provider</param>
+  /// <param name="ep_factory">Execution provider factory.</param>
   /// <param name="hardware_device">Hardware device that the EP can utilize.</param>
   /// <param name="ep_device_properties">EP specific metadata for execution on hardware_device.</param>
   /// <param name="ort_execution_device">OrtExecutionDevice that is created.</param>
-  ORT_API2_STATUS(CreateExecutionDevice, _In_ /*const*/ OrtEp* ep, _In_ const OrtHardwareDevice* hardware_device,
+  ORT_API2_STATUS(CreateExecutionDevice, _In_ /*const*/ OrtEpFactory* ep_factory,
+                  _In_ const OrtHardwareDevice* hardware_device,
                   _In_reads_(num_ep_device_properties) const char** ep_device_properties_keys,
                   _In_reads_(num_ep_device_properties) const char** ep_device_properties_values,
                   _In_ size_t num_ep_device_properties,
                   _Out_ OrtExecutionDevice** ort_execution_device);
+
+  ORT_CLASS_RELEASE(ExecutionDevice);
 
   //
   // OrtSessionOptions accessors

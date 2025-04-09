@@ -102,6 +102,9 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
 OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _In_ onnxruntime::InferenceSession& sess,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container) {
+  // TODO: If the session is using autoep selection, use the environment to do selection
+  // The OrtExecutionDevice entries are in ep_libraries_;
+  
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;

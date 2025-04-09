@@ -17,36 +17,36 @@
 namespace onnxruntime {
 
 namespace {
-int PrintDxgiInfo() {
-  IDXGIFactory* pFactory = nullptr;
-  HRESULT hr = CreateDXGIFactory(__uuidof(IDXGIFactory), (void**)(&pFactory));
+// int PrintDxgiInfo() {
+//   IDXGIFactory* pFactory = nullptr;
+//   HRESULT hr = CreateDXGIFactory(__uuidof(IDXGIFactory), (void**)(&pFactory));
+//
+//   if (FAILED(hr)) {
+//     std::cerr << "Failed to create DXGI Factory!" << std::endl;
+//     return 1;
+//   }
+//
+//   IDXGIAdapter* pAdapter = nullptr;
+//   for (UINT i = 0; pFactory->EnumAdapters(i, &pAdapter) != DXGI_ERROR_NOT_FOUND; ++i) {
+//     DXGI_ADAPTER_DESC desc;
+//     pAdapter->GetDesc(&desc);
+//
+//     std::wcout << L"GPU: " << desc.Description << std::endl;
+//     std::wcout << L"Vendor ID: " << desc.VendorId << std::endl;
+//     std::wcout << L"Device ID: " << desc.DeviceId << std::endl;
+//     std::wcout << L"SubSys ID: " << desc.SubSysId << std::endl;
+//     std::wcout << L"Revision: " << desc.Revision << std::endl;
+//     std::wcout << L"-----------------------------------" << std::endl;
+//
+//     pAdapter->Release();
+//   }
+//
+//   pFactory->Release();
+//   return 0;
+// }
 
-  if (FAILED(hr)) {
-    std::cerr << "Failed to create DXGI Factory!" << std::endl;
-    return 1;
-  }
-
-  IDXGIAdapter* pAdapter = nullptr;
-  for (UINT i = 0; pFactory->EnumAdapters(i, &pAdapter) != DXGI_ERROR_NOT_FOUND; ++i) {
-    DXGI_ADAPTER_DESC desc;
-    pAdapter->GetDesc(&desc);
-
-    std::wcout << L"GPU: " << desc.Description << std::endl;
-    std::wcout << L"Vendor ID: " << desc.VendorId << std::endl;
-    std::wcout << L"Device ID: " << desc.DeviceId << std::endl;
-    std::wcout << L"SubSys ID: " << desc.SubSysId << std::endl;
-    std::wcout << L"Revision: " << desc.Revision << std::endl;
-    std::wcout << L"-----------------------------------" << std::endl;
-
-    pAdapter->Release();
-  }
-
-  pFactory->Release();
-  return 0;
-}
-
-std::vector<HardwareDevice> GetGpuAndNpuDevices() {
-  std::vector<HardwareDevice> found_devices;
+std::vector<OrtHardwareDevice> GetGpuAndNpuDevices() {
+  std::vector<OrtHardwareDevice> found_devices;
   std::unordered_set<uint32_t> found_device_ids;
 
   // Get information about the CPU device
@@ -116,8 +116,8 @@ std::vector<HardwareDevice> GetGpuAndNpuDevices() {
       //       If so wouldn't any later matches be skipped as the device is already in found_devices_ids?
       if (adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS)) {
         // GPU
-        HardwareDevice device;
-        device.type = HardwareDevice::Type::GPU;
+        OrtHardwareDevice device;
+        device.type = OrtHardwareDevice::Type::GPU;
         device.vendor = std::to_string(idParts.vendorID);
 
       } else {
@@ -133,15 +133,14 @@ std::vector<HardwareDevice> GetGpuAndNpuDevices() {
 }
 }  // namespace
 
-std::vector<HardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
-  std::vector<HardwareDevice> devices;
+std::vector<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
+  std::vector<OrtHardwareDevice> devices;
   // get CPU devices
 
   // get GPU devices
 
   // get NPU devices
 
-  PrintDxgiInfo();
   devices = GetGpuAndNpuDevices();
   return devices;
 }

@@ -3,6 +3,7 @@
 
 #include "core/session/environment.h"
 
+#include "core/common/basic_types.h"
 #include "core/framework/allocator_utils.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/plugin_execution_provider.h"
@@ -349,70 +350,49 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
                 provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
 }
 
-// Can we add the path to the config params in Session Options instead of passing it in?
-std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateSessionOptionEps(const OrtSessionOptions& so,
-                                                                                     const logging::Logger& logger) {
-  std::vector<std::unique_ptr<IExecutionProvider>> eps;
-  eps.reserve(so.provider_factories.size());
-
-  for (const auto& f : so.provider_factories) {
-    eps.push_back(f->CreateProvider());
-    // TODO: How do we pass in SessionOption config values?
-    eps.back()->SetLogger(&logger);
-  }
-
-  return eps;
-}
-
-std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateInternalEps(const OrtSessionOptions& /*so*/) {
-  // CPU EP
-
-#if defined(USE_DML)
-#endif
-
-#if defined(USE_WEBGPU)
-#endif
-
-  return {};
-}
-
-void Environment::CreateLegacyEps(const OrtSessionOptions& /*so*/,
-                                  std::vector<std::unique_ptr<IExecutionProvider>>& eps) {
-  for (const auto& f : provider_bridge_ep_factories_) {
-    eps.push_back(f->CreateProvider());
-    // TODO: how should SessionOptions and the logger be set in the EP?
-  }
-}
-
-void Environment::CreatePluginEps(const OrtSessionOptions& so,
-                                  const OrtLogger& session_logger,
-                                  std::vector<std::unique_ptr<IExecutionProvider>>& eps) {
-  for (auto* ep_factory : ep_factories_) {
-    OrtEpApi::OrtEp* ep = nullptr;
-    ep_factory->CreateEp(ep_factory, &so, &session_logger, &ep);
-    if (ep) {
-      eps.push_back(std::make_unique<PluginEp>(*ep_factory, *ep));
-    }
-  }
-}
-
 std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateExecutionProviders(
-    const OrtSessionOptions& so, const InferenceSession& session) {
-  // If EPs are explicitly specified in session options, use them.
-  if (!so.provider_factories.empty()) {
-    return CreateSessionOptionEps(so, *session.GetLogger());
-  }
+    const OrtSessionOptions& /*so*/, const InferenceSession& /*session*/) {
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
 
-  // internal
-  auto eps = CreateInternalEps(so);
-
-  // provider bridge
-  CreateLegacyEps(so, eps);
-
-  const OrtLogger& session_logger = *reinterpret_cast<const OrtLogger*>(session.GetLogger());
-  CreatePluginEps(so, session_logger, eps);
+  // use entries in ep_libraries_ to select EPs to create
 
   return eps;
 }
+
+Status Environment::RegisterExecutionProviderPluginLibrary(const ORTCHAR_T* lib_path, const std::string& ep_name) {
+  if (ep_libraries_.count(ep_name) > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", ep_name, " is already registered.");
+  }
+
+  try {
+    // load the library
+    std::unique_ptr<EpLibrary> ep_library(std::make_unique<EpLibraryPlugin>(std::string(ep_name), lib_path));
+    ep_libraries_[ep_name] = std::make_unique<EpInfo>(std::move(ep_library));
+
+  } catch (const std::exception& ex) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to register EP library: ", ep_name, " with error: ", ex.what());
+  }
+
+  return Status::OK();
+}
+
+Status Environment::UnregisterExecutionProviderPluginLibrary(const std::string& ep_name) {
+  if (ep_libraries_.count(ep_name) > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", ep_name, " was not registered.");
+  }
+
+  try {
+    // unload. remove from map before unloading so we don't get a leftover entry.
+    auto ep_info = std::move(ep_libraries_[ep_name]);
+    ep_libraries_.erase(ep_name);
+    ep_info.reset();
+  } catch (const std::exception& ex) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unregister EP library: ", ep_name, " with error: ", ex.what());
+  }
+
+  return Status::OK();
+}
+
+Environment::~Environment() = default;
 
 }  // namespace onnxruntime

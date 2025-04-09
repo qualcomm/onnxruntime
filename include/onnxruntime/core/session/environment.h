@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "core/common/common.h"
+#include "core/common/basic_types.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/allocator.h"
@@ -16,6 +17,8 @@
 #include "core/platform/threadpool.h"
 
 // TODO: should we be getting the plugin EP types this way or from an internal header?
+#include "core/session/abi_devices.h"
+#include "core/session/ep_api.h"
 #include "core/session/onnxruntime_c_api.h"
 
 struct OrtThreadingOptions;
@@ -99,39 +102,27 @@ class Environment {
    */
   Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
-  Status RegisterPluginEpFactory(OrtEpApi::OrtEpFactory& ep_factory) {
-    ep_factories_.push_back(&ep_factory);
-    return Status::OK();
-  }
-
-  Status RegisterLegacyEpFactory(const std::filesystem::path& /*library_path*/) {
-    // create entry to load provider bridge EP from path and be able to call IExecutionProviderFactory.
-    // TODO: Can we pass in session options and the session logger so those are setup upfront so things are more
-    // consistent with the plugin EP creation?
-    // One challenge is there's a `struct Logger` in the provider API which isn't the same as the Logger in the
-    // C API. Can the C API OrtLogger be used?
-
-    return Status::OK();
-  }
-
+  // auto EP selection
+  // possibly belongs in separate class.
   std::vector<std::unique_ptr<IExecutionProvider>> CreateExecutionProviders(const OrtSessionOptions& so,
                                                                             const InferenceSession& session);
 
+  Status RegisterExecutionProviderPluginLibrary(const ORTCHAR_T* lib_path, const std::string& ep_name);
+  Status UnregisterExecutionProviderPluginLibrary(const std::string& ep_name);
+
+  ~Environment();
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
+
   Status Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
                     const OrtThreadingOptions* tp_options = nullptr,
                     bool create_global_thread_pools = false);
 
-  // register EPs that are built into the ORT binary
-  std::vector<std::unique_ptr<IExecutionProvider>> CreateInternalEps(const OrtSessionOptions& so);
-  void CreateLegacyEps(const OrtSessionOptions& so, std::vector<std::unique_ptr<IExecutionProvider>>& eps);
-  void CreatePluginEps(const OrtSessionOptions& so, const OrtLogger& session_logger,
-                       std::vector<std::unique_ptr<IExecutionProvider>>& eps);
-
-  // EPs explicitly added to SessionOptions
-  std::vector<std::unique_ptr<IExecutionProvider>> CreateSessionOptionEps(const OrtSessionOptions& so,
-                                                                          const logging::Logger& logger);
+  // register EPs that are built into the ORT binary so they can take part in AutoEP selection
+  // added to ep_libraries
+  void CreateInternalEps(const OrtSessionOptions& so, const logging::Logger& logger,
+                         std::vector<std::unique_ptr<IExecutionProvider>>& eps);
 
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
@@ -139,7 +130,32 @@ class Environment {
   bool create_global_thread_pools_{false};
   std::vector<AllocatorPtr> shared_allocators_;
 
-  std::vector<std::shared_ptr<IExecutionProviderFactory>> provider_bridge_ep_factories_;
-  std::vector<OrtEpApi::OrtEpFactory*> ep_factories_;
+  struct EpInfo {
+    EpInfo() = delete;
+    EpInfo(std::unique_ptr<EpLibrary> library_in) : library{std::move(library_in)} {
+      ORT_THROW_IF_ERROR(library->Load());
+    }
+
+    OrtEpApi::OrtEpFactory& GetFactory() {
+      // Load must have been successful to get to here to this will should always be valid
+      return *library->GetFactory();
+    }
+
+    ~EpInfo() {
+      execution_devices.clear();
+      if (library) {
+        auto status = library->Unload();
+        if (!status.IsOK()) {
+          LOGS_DEFAULT(WARNING) << "Failed to unload EP library: " << library->Name() << " with error: " << status.ErrorMessage();
+        }
+      }
+    }
+
+    std::unique_ptr<EpLibrary> library;  // library if not internal EP
+    std::vector<std::unique_ptr<OrtExecutionDevice>> execution_devices;
+  };
+
+  std::unordered_map<std::string, std::unique_ptr<EpInfo>> ep_libraries_;  // EP name to things it provides
 };
+
 }  // namespace onnxruntime

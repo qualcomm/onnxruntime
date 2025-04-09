@@ -12,7 +12,7 @@ namespace onnxruntime {
 class PluginEp : public IExecutionProvider {
  public:
   PluginEp(OrtEpApi::OrtEpFactory& factory, OrtEpApi::OrtEp& ep)
-      : IExecutionProvider(ep.GetName(&ep)), ep_factory_{factory}, ep_{ep} {
+      : IExecutionProvider(factory.GetName(&factory)), ep_factory_{factory}, ep_{ep} {
   }
 
   ~PluginEp() {
