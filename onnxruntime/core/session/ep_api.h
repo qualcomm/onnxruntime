@@ -7,6 +7,7 @@
 #include <mutex>
 
 #include "core/common/common.h"
+#include "core/session/internal_ep_factory.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace OrtExecutionProviderApi {
@@ -47,20 +48,22 @@ struct EpLibrary {
   virtual Status Unload() { return Status::OK(); }
 };
 
-class EpLibraryInternal : EpLibrary {
-  EpLibraryInternal(OrtEpApi::OrtEpFactory& factory) : factory_{factory} {
+struct EpLibraryInternal : EpLibrary {
+  EpLibraryInternal(std::unique_ptr<InternalEpFactory> factory)
+      : factory_{std::move(factory)}, factory_ptr_{factory_.get()} {
   }
 
   const char* Name() const override {
-    return factory_.GetName(&factory_);
+    return factory_ptr_->GetName(factory_ptr_);
   }
 
   OrtEpApi::OrtEpFactory* GetFactory() override {
-    return &factory_;
+    return factory_ptr_;
   }
 
  private:
-  OrtEpApi::OrtEpFactory& factory_;
+  std::unique_ptr<InternalEpFactory> factory_;
+  OrtEpApi::OrtEpFactory* factory_ptr_;  // for convenience
 };
 
 struct EpLibraryProviderBridge : EpLibrary {

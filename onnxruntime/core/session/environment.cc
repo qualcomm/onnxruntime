@@ -10,9 +10,12 @@
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "core/platform/device_discovery.h"
+#include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/inference_session.h"
-#include "core/session/abi_session_options_impl.h"
+#include "core/session/internal_ep_factory.h"
+#include "core/session/ort_apis.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
@@ -359,14 +362,52 @@ std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateExecutionPro
   return eps;
 }
 
-Status Environment::RegisterExecutionProviderLibrary(const ORTCHAR_T* lib_path, const std::string& ep_name) {
+Status Environment::CreateInternalEps() {
+  // TODO: Should probably put the functions to create each internal EP in a separate file.
+
+  // CPU EP
+  const auto is_supported = [](const OrtHardwareDevice* device,
+                               OrtKeyValuePairs** /*ep_metadata*/,
+                               OrtKeyValuePairs** /*ep_options*/) -> bool {
+    if (device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
+      // we have nothing to add.
+
+      // use OrtApis directly to allocate or `new OrtKeyValuePairs` is fine as well. can add values directly
+      // OrtApis::CreateKeyValuePairs(ep_metadata);
+      //*ep_options = new OrtKeyValuePairs();
+      //(*ep_options)->Add("options", "value");
+
+      return true;
+    }
+
+    return false;
+  };
+
+  const auto create_cpu_ep = [](const SessionOptions& so, const logging::Logger& session_logger) {
+    CPUExecutionProviderInfo epi{so.enable_cpu_mem_arena};
+    auto ep = std::make_unique<CPUExecutionProvider>(epi);
+    ep->SetLogger(&session_logger);
+    return ep;
+  };
+
+  std::string ep_name = kCpuExecutionProvider;
+  auto cpu_factory = std::make_unique<InternalEpFactory>(ep_name, "Microsoft",
+                                                         is_supported, create_cpu_ep);
+  std::unique_ptr<EpLibrary> cpu_library = std::make_unique<EpLibraryInternal>(std::move(cpu_factory));
+
+  ORT_RETURN_IF_ERROR(RegisterExecutionProviderLibrary(std::move(cpu_library), ep_name));
+
+  return Status::OK();
+}
+
+Status Environment::RegisterExecutionProviderLibrary(std::unique_ptr<EpLibrary> ep_library,
+                                                     const std::string& ep_name) {
   if (ep_libraries_.count(ep_name) > 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", ep_name, " is already registered.");
   }
 
   try {
-    // load the library
-    std::unique_ptr<EpLibrary> ep_library = std::make_unique<EpLibraryPlugin>(std::string(ep_name), lib_path);
+    // create the EpInfo which loads the library if required
     std::unique_ptr<EpInfo> ep_info = nullptr;
     ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info));
 
@@ -383,6 +424,13 @@ Status Environment::RegisterExecutionProviderLibrary(const ORTCHAR_T* lib_path, 
   }
 
   return Status::OK();
+}
+
+Status Environment::RegisterExecutionProviderLibrary(const ORTCHAR_T* lib_path, const std::string& ep_name) {
+  // load the library
+  std::unique_ptr<EpLibrary> ep_library = std::make_unique<EpLibraryPlugin>(std::string(ep_name), lib_path);
+
+  return RegisterExecutionProviderLibrary(std::move(ep_library), ep_name);
 }
 
 Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_name) {

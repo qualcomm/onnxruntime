@@ -48,35 +48,30 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
     ReleaseEp = ReleaseEpImpl;
   }
 
-  static const char* GetNameImpl(OrtEpFactory* this_ptr) {
-    DummyEpFactory* ep = static_cast<DummyEpFactory*>(this_ptr);
+  static const char* GetNameImpl(const OrtEpFactory* this_ptr) {
+    const auto* ep = static_cast<const DummyEpFactory*>(this_ptr);
     return ep->ep_name_.c_str();
   }
 
-  static const char* GetVendorImpl(OrtEpFactory* this_ptr) {
-    DummyEpFactory* ep = static_cast<DummyEpFactory*>(this_ptr);
+  static const char* GetVendorImpl(const OrtEpFactory* this_ptr) {
+    const auto* ep = static_cast<const DummyEpFactory*>(this_ptr);
     return ep->vendor_.c_str();
   }
 
-  static bool GetDeviceInfoIfSupportedImpl(OrtEpFactory* this_ptr,
+  static bool GetDeviceInfoIfSupportedImpl(const OrtEpFactory* this_ptr,
                                            const OrtHardwareDevice* device,
-                                           _Out_ OrtKeyValuePairs** ep_device_metadata,
-                                           _Out_ OrtKeyValuePairs** ep_options_for_device) {
-    DummyEpFactory* ep = static_cast<DummyEpFactory*>(this_ptr);
+                                           _Out_opt_ OrtKeyValuePairs** ep_metadata,
+                                           _Out_opt_ OrtKeyValuePairs** ep_options) {
+    const auto* ep = static_cast<const DummyEpFactory*>(this_ptr);
 
     if (ep->ep_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
       // these can be returned as nullptr if you have nothing to add.
-      OrtKeyValuePairs* ep_metadata = nullptr;
-      OrtKeyValuePairs* ep_options = nullptr;
-      ep->ort_api.CreateKeyValuePairs(&ep_metadata);
-      ep->ort_api.CreateKeyValuePairs(&ep_options);
+      ep->ort_api.CreateKeyValuePairs(ep_metadata);
+      ep->ort_api.CreateKeyValuePairs(ep_options);
 
       // random example using made up values
-      ep->ort_api.AddKeyValuePair(ep_metadata, "version", "0.1");
-      ep->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
-
-      *ep_device_metadata = ep_metadata;
-      *ep_options_for_device = ep_options;
+      ep->ort_api.AddKeyValuePair(*ep_metadata, "version", "0.1");
+      ep->ort_api.AddKeyValuePair(*ep_options, "run_really_fast", "true");
 
       return true;
     }
@@ -84,14 +79,14 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
     return nullptr;
   }
 
-  static OrtStatus* CreateEpImpl(const OrtEpFactory* this_ptr,
+  static OrtStatus* CreateEpImpl(OrtEpFactory* this_ptr,
                                  _In_reads_(num_devices) const OrtHardwareDevice* const* /*devices*/,
                                  _In_reads_(num_devices) const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
                                  _In_ size_t num_devices,
                                  _In_ const OrtSessionOptions* session_options,
                                  _In_ const OrtLogger* logger,
                                  _Out_ OrtEp** ep) {
-    const DummyEpFactory* factory = static_cast<const DummyEpFactory*>(this_ptr);
+    auto* factory = static_cast<DummyEpFactory*>(this_ptr);
 
     if (num_devices != 1) {
       // we only registered for CPU and only expected to be selected for one CPU
@@ -125,21 +120,13 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
     return nullptr;
   }
 
-  static void ReleaseEpImpl(OrtEpFactory* this_ptr, OrtEp* ep) {
-    DummyEpFactory* factory = static_cast<DummyEpFactory*>(this_ptr);
-
-    // Release the execution provider
-    for (auto& ep_instance : factory->eps_) {
-      if (ep_instance.get() == ep) {
-        ep_instance.reset();  // don't bother removing from vector as this point. probably doesn't matter.
-        break;
-      }
-    }
+  static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) {
+    DummyEp* dummy_ep = static_cast<DummyEp*>(ep);
+    delete dummy_ep;
   }
 
-  const std::string ep_name_;                  // EP name library was registered with
-  const std::string vendor_{"Contoso"};        // EP vendor name
-  std::vector<std::unique_ptr<DummyEp>> eps_;  // EP instances created by this factory
+  const std::string ep_name_;            // EP name library was registered with
+  const std::string vendor_{"Contoso"};  // EP vendor name
 };
 
 //

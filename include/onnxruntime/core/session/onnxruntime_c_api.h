@@ -4997,7 +4997,7 @@ struct OrtEpApi {
 
     // need this for partitioning as nodes are assigned using the EP name
     // equivalent to IExecutionProvider::Type but 'name'
-    const char* GetName();
+    const char*(ORT_API_CALL* GetName)(const OrtEp* this_ptr);
 
     // Get internal ORT EP implementation (IExecutionProvider) if available so we can execute internal EPs using
     // existing code.
@@ -5025,19 +5025,13 @@ struct OrtEpApi {
     // ORT will use this to ensure it does not attempt to use functionality that was not available at the time.
     uint32_t ort_version_supported;
 
-    const char*(ORT_API_CALL* GetName)(OrtEpFactory* this_ptr);    // return name EP was registered with
-    const char*(ORT_API_CALL* GetVendor)(OrtEpFactory* this_ptr);  // return EP vendor
+    const char*(ORT_API_CALL* GetName)(const OrtEpFactory* this_ptr);    // return name EP was registered with
+    const char*(ORT_API_CALL* GetVendor)(const OrtEpFactory* this_ptr);  // return EP vendor
 
-    OrtStatus*(ORT_API_CALL* GetExecutionDevices)(_In_ /* const? */ OrtEpFactory* this_ptr,
-                                                  _In_reads_(num_devices) const OrtHardwareDevice** devices,
-                                                  _In_ size_t num_devices,
-                                                  OrtExecutionDevice** execution_devices,
-                                                  size_t* num_execution_devices);
-
-    bool(ORT_API_CALL* GetDeviceInfoIfSupported)(OrtEpFactory* this_ptr,
+    bool(ORT_API_CALL* GetDeviceInfoIfSupported)(const OrtEpFactory* this_ptr,
                                                  _In_ const OrtHardwareDevice* device,
-                                                 _Out_ OrtKeyValuePairs** ep_device_metadata,
-                                                 _Out_ OrtKeyValuePairs** ep_options_for_device);
+                                                 _Out_opt_ OrtKeyValuePairs** ep_metadata,
+                                                 _Out_opt_ OrtKeyValuePairs** ep_options);
 
     // Function to create an EP instance for use in a session.
     //
@@ -5058,7 +5052,7 @@ struct OrtEpApi {
     //   logger is Session logger. EP instance should use for output.
     //
     //   ORT will take ownership and call ReleaseEp to release the OrtEp instance when it is no longer needed.
-    OrtStatus*(ORT_API_CALL* CreateEp)(_In_ const OrtEpFactory* this_ptr,
+    OrtStatus*(ORT_API_CALL* CreateEp)(_In_ OrtEpFactory* this_ptr,
                                        _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
                                        _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
                                        _In_ size_t num_devices,

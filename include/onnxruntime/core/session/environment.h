@@ -141,8 +141,9 @@ class Environment {
 
   // register EPs that are built into the ORT binary so they can take part in AutoEP selection
   // added to ep_libraries
-  void CreateInternalEps(const OrtSessionOptions& so, const logging::Logger& logger,
-                         std::vector<std::unique_ptr<IExecutionProvider>>& eps);
+  Status CreateInternalEps();
+
+  Status RegisterExecutionProviderLibrary(std::unique_ptr<EpLibrary> ep_library, const std::string& ep_name);
 
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
