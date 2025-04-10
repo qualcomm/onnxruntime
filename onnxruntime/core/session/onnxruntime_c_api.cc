@@ -2662,6 +2662,10 @@ ORT_API(void, OrtApis::GetKeyValuePairs, _In_ OrtKeyValuePairs* kvps,
   *num_entries = kvps->entries.size();
 }
 
+ORT_API(void, OrtApis::RemoveKeyValuePair, _Frees_ptr_opt_ OrtKeyValuePairs* kvps, _In_ const char* key) {
+  kvps->Remove(key);
+}
+
 ORT_API(void, OrtApis::ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs* kvps) {
   delete kvps;
 }
@@ -3062,6 +3066,8 @@ static constexpr OrtApi ort_api_1_to_22 = {
 
     &OrtApis::SetEpDynamicOptions,
     // End of Version 20 - DO NOT MODIFY ABOVE (see above text for more information)
+    // End of Version 21 - DO NOT MODIFY ABOVE (see above text for more information)
+    // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::ReleaseValueInfo,
     &OrtApis::ReleaseNode,
@@ -3090,6 +3096,7 @@ static constexpr OrtApi ort_api_1_to_22 = {
     &OrtApis::AddKeyValuePair,
     &OrtApis::GetKeyValuePair,
     &OrtApis::GetKeyValuePairs,
+    &OrtApis::RemoveKeyValuePair,
     &OrtApis::ReleaseKeyValuePairs,
 
     &OrtApis::GetEpApi};
@@ -3123,8 +3130,8 @@ static_assert(offsetof(OrtApi, GetBuildInfoString) / sizeof(void*) == 254, "Size
 static_assert(offsetof(OrtApi, KernelContext_GetResource) / sizeof(void*) == 265, "Size of version 16 API cannot change");
 static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_OpenVINO_V2) / sizeof(void*) == 275, "Size of version 17 API cannot change");
 static_assert(offsetof(OrtApi, AddExternalInitializersFromFilesInMemory) / sizeof(void*) == 279, "Size of version 18 API cannot change");
-// no additions in version 19
-static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Size of version 20 API cannot change");
+// no additions in version 19, 20 and 21
+static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Size of version 21 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.22.0",

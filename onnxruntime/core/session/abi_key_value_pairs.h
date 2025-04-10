@@ -34,6 +34,20 @@ struct OrtKeyValuePairs {
     }
   }
 
+  // we don't expect this to be common. reconsider using std::vector or call Sync if it turns out to be.
+  void Remove(const char* key) {
+    auto iter = entries.find(key);
+    if (iter != entries.end()) {
+      auto key_iter = std::find(keys.begin(), keys.end(), iter->first.c_str());
+      // there should only ever be one matching entry, and keys and values should be in sync
+      if (key_iter != keys.end()) {
+        auto idx = std::distance(keys.begin(), key_iter);
+        keys.erase(key_iter);
+        values.erase(values.begin() + idx);
+      }
+    }
+  }
+
  private:
   void Sync() {
     keys.clear();

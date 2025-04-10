@@ -5,6 +5,10 @@
 
 #include <string_view>
 #include "core/common/common.h"
+#include "core/common/status.h"
+
+#include "core/session/abi_devices.h"
+#include "core/session/environment.h"
 #include "core/session/onnxruntime_c_api.h"
 
 onnxruntime::common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, char* out, size_t* size);
@@ -26,3 +30,9 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
 OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _In_ onnxruntime::InferenceSession& sess,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr);
+namespace onnxruntime {
+// Select execution providers based on the device policy and available devices and add to session
+// TODO: Should this be in session or lower like framework?
+Status SelectEPs(const Environment& env, OrtExecutionProviderDevicePolicy device_policy,
+                 InferenceSession& sess, const OrtLogger& logger);
+}  // namespace onnxruntime

@@ -107,8 +107,28 @@ class Environment {
   std::vector<std::unique_ptr<IExecutionProvider>> CreateExecutionProviders(const OrtSessionOptions& so,
                                                                             const InferenceSession& session);
 
-  Status RegisterExecutionProviderPluginLibrary(const ORTCHAR_T* lib_path, const std::string& ep_name);
-  Status UnregisterExecutionProviderPluginLibrary(const std::string& ep_name);
+  Status RegisterExecutionProviderLibrary(const ORTCHAR_T* lib_path, const std::string& ep_name);
+  Status UnregisterExecutionProviderLibrary(const std::string& ep_name);
+
+  void RegisterInternalExecutionProvider(const OrtEpApi::OrtEp& ep, const IExecutionProvider& internal_ep) {
+    ortep_to_internal_ep_[&ep] = &internal_ep;
+  }
+
+  const IExecutionProvider* GetInternalExecutionProvider(const OrtEpApi::OrtEp& ep) const {
+    auto it = ortep_to_internal_ep_.find(&ep);
+    if (it != ortep_to_internal_ep_.end()) {
+      return it->second;
+    }
+    return nullptr;
+  }
+
+  void UnregisterInternalExecutionProvider(const OrtEpApi::OrtEp& ep) {
+    ortep_to_internal_ep_.erase(&ep);
+  }
+
+  const std::unordered_set<const OrtExecutionDevice*> GetExecutionDevices() const {
+    return execution_devices_;
+  }
 
   ~Environment();
 
@@ -131,9 +151,42 @@ class Environment {
   std::vector<AllocatorPtr> shared_allocators_;
 
   struct EpInfo {
-    EpInfo() = delete;
-    EpInfo(std::unique_ptr<EpLibrary> library_in) : library{std::move(library_in)} {
-      ORT_THROW_IF_ERROR(library->Load());
+    static Status Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out) {
+      if (!library_in) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EpLibrary was null");
+      }
+
+      out.reset(new EpInfo());  // can't use make_unique with private ctor
+      EpInfo& instance = *out;
+      instance.library = std::move(library_in);
+
+      ORT_RETURN_IF_ERROR(instance.library->Load());
+      auto& factory = instance.GetFactory();
+
+      // for each device
+      for (const auto& device : DeviceDiscovery::GetDevices()) {
+        OrtKeyValuePairs* ep_metadata = nullptr;
+        OrtKeyValuePairs* ep_options = nullptr;
+
+        if (factory.GetDeviceInfoIfSupported(&factory, &device, &ep_metadata, &ep_options)) {
+          auto ed = std::make_unique<OrtExecutionDevice>();
+          ed->ep_name = factory.GetName(&factory);  // creating the OrtExecutionDevice here means the EP name is always fixed
+          ed->ep_vendor = factory.GetVendor(&factory);
+          ed->device = &device;
+          if (ep_metadata) {
+            ed->ep_metadata = *ep_metadata;
+          }
+          if (ep_options) {
+            ed->ep_options = *ep_options;
+          }
+
+          ed->ep_factory = &factory;
+
+          instance.execution_devices.push_back(std::move(ed));
+        }
+      }
+
+      return Status::OK();
     }
 
     OrtEpApi::OrtEpFactory& GetFactory() {
@@ -143,19 +196,24 @@ class Environment {
 
     ~EpInfo() {
       execution_devices.clear();
-      if (library) {
-        auto status = library->Unload();
-        if (!status.IsOK()) {
-          LOGS_DEFAULT(WARNING) << "Failed to unload EP library: " << library->Name() << " with error: " << status.ErrorMessage();
-        }
+      auto status = library->Unload();
+      if (!status.IsOK()) {
+        LOGS_DEFAULT(WARNING) << "Failed to unload EP library: " << library->Name() << " with error: " << status.ErrorMessage();
       }
     }
 
-    std::unique_ptr<EpLibrary> library;  // library if not internal EP
+    std::unique_ptr<EpLibrary> library;
     std::vector<std::unique_ptr<OrtExecutionDevice>> execution_devices;
+
+   private:
+    EpInfo() = default;
   };
 
   std::unordered_map<std::string, std::unique_ptr<EpInfo>> ep_libraries_;  // EP name to things it provides
+  std::unordered_set<const OrtExecutionDevice*> execution_devices_;
+
+  // map for internal EPs so we can use IExecutionProvider for them instead of OrtEpApi::OrtEp
+  std::unordered_map<const OrtEpApi::OrtEp*, const IExecutionProvider*> ortep_to_internal_ep_;
 };
 
 }  // namespace onnxruntime

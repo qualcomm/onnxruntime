@@ -14,42 +14,22 @@
 #include <dxgi.h>
 #pragma comment(lib, "dxgi.lib")
 #include <iostream>
+
+#include "core/common/cpuid_info.h"
+#include "core/session/abi_devices.h"
 namespace onnxruntime {
 
 namespace {
-// int PrintDxgiInfo() {
-//   IDXGIFactory* pFactory = nullptr;
-//   HRESULT hr = CreateDXGIFactory(__uuidof(IDXGIFactory), (void**)(&pFactory));
-//
-//   if (FAILED(hr)) {
-//     std::cerr << "Failed to create DXGI Factory!" << std::endl;
-//     return 1;
-//   }
-//
-//   IDXGIAdapter* pAdapter = nullptr;
-//   for (UINT i = 0; pFactory->EnumAdapters(i, &pAdapter) != DXGI_ERROR_NOT_FOUND; ++i) {
-//     DXGI_ADAPTER_DESC desc;
-//     pAdapter->GetDesc(&desc);
-//
-//     std::wcout << L"GPU: " << desc.Description << std::endl;
-//     std::wcout << L"Vendor ID: " << desc.VendorId << std::endl;
-//     std::wcout << L"Device ID: " << desc.DeviceId << std::endl;
-//     std::wcout << L"SubSys ID: " << desc.SubSysId << std::endl;
-//     std::wcout << L"Revision: " << desc.Revision << std::endl;
-//     std::wcout << L"-----------------------------------" << std::endl;
-//
-//     pAdapter->Release();
-//   }
-//
-//   pFactory->Release();
-//   return 0;
-// }
-
-std::vector<OrtHardwareDevice> GetGpuAndNpuDevices() {
-  std::vector<OrtHardwareDevice> found_devices;
-  std::unordered_set<uint32_t> found_device_ids;
+std::unordered_set<OrtHardwareDevice> GetInferencingDevices() {
+  std::unordered_set<OrtHardwareDevice> found_devices;
 
   // Get information about the CPU device
+  auto vendor = CPUIDInfo::GetCPUIDInfo().GetCPUVendor();
+
+  // Create an OrtDevice for the CPU and add it to the list of found devices
+  OrtHardwareDevice cpu_device{OrtHardwareDeviceType_CPU, 0, std::string(vendor), 0};
+
+  found_devices.insert(cpu_device);
 
   // Get all GPUs and NPUs by querying WDDM/MCDM.
   wil::com_ptr<IDXCoreAdapterFactory> adapterFactory;
@@ -59,7 +39,6 @@ std::vector<OrtHardwareDevice> GetGpuAndNpuDevices() {
   std::vector<const GUID*> allowedAttributes;
   allowedAttributes.push_back(&DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE);
   allowedAttributes.push_back(&DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML);
-  allowedAttributes.push_back(&DXCORE_HARDWARE_TYPE_ATTRIBUTE_GPU);
   allowedAttributes.push_back(&DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU);
 
   // These attributes are not OR'd.  Have to query one at a time to get a full view.
@@ -90,7 +69,8 @@ std::vector<OrtHardwareDevice> GetGpuAndNpuDevices() {
         hrId = adapter->GetProperty(DXCoreAdapterProperty::HardwareIDParts, sizeof(idParts), &idParts);
       }
 
-      if (FAILED(hrId) && adapter->IsPropertySupported(DXCoreAdapterProperty::HardwareID)) {
+      std::string_view mcdm_vendor_managed;
+      if (SUCCEEDED(hrId) && adapter->IsPropertySupported(DXCoreAdapterProperty::HardwareID)) {
         DXCoreHardwareID id;
         hrId = adapter->GetProperty(DXCoreAdapterProperty::HardwareID, sizeof(id), &id);
         if (SUCCEEDED(hrId)) {
@@ -98,50 +78,43 @@ std::vector<OrtHardwareDevice> GetGpuAndNpuDevices() {
           idParts.deviceID = id.deviceID;
           idParts.revisionID = id.revision;
           idParts.subSystemID = id.subSysID;
+          idParts.subVendorID = 0;
         }
       }
 
-      if (found_device_ids.count(idParts.deviceID) > 0) {
-        continue;  // already found this device
+      // TODO: Get hardware properties given these ID parts and decide what to do with them
+      hrId = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+      char driverDescription[256];
+      if (adapter->IsPropertySupported(DXCoreAdapterProperty::DriverDescription)) {
+        hrId = adapter->GetProperty(DXCoreAdapterProperty::DriverDescription, sizeof(driverDescription), &driverDescription);
       }
-
-      // TODO: Get hardware properties given these ID parts
-      //
-      // TODO: Should OrtDevice really be int not uint and 16 not 32
-      // OrtDevice found_device(kind, OrtDevice::MemType::DEFAULT, (int16_t)idParts.deviceID, (int16_t)idParts.vendorID);
-      // found_devices.push_back(found_device);
 
       // Is this a GPU or NPU
-      // TODO: Why wouldn't checking for DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU first discover all NPUs?
-      //       If so wouldn't any later matches be skipped as the device is already in found_devices_ids?
+      OrtHardwareDeviceType kind = OrtHardwareDeviceType::OrtHardwareDeviceType_NPU;
       if (adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS)) {
-        // GPU
-        OrtHardwareDevice device;
-        device.type = OrtHardwareDevice::Type::GPU;
-        device.vendor = std::to_string(idParts.vendorID);
-
-      } else {
-        // NPU.
-        //
+        kind = OrtHardwareDeviceType::OrtHardwareDeviceType_GPU;
       }
 
-      found_device_ids.insert(idParts.deviceID);
+      // Insert the device into the set - if not a duplicate
+      OrtHardwareDevice found_device(kind, idParts.vendorID, "", idParts.deviceID);
+      found_devices.insert(found_device);
     }
   }
 
   return found_devices;
 }
+
 }  // namespace
 
-std::vector<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
-  std::vector<OrtHardwareDevice> devices;
+std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
+  std::unordered_set<OrtHardwareDevice> devices;
   // get CPU devices
 
   // get GPU devices
 
   // get NPU devices
 
-  devices = GetGpuAndNpuDevices();
+  devices = GetInferencingDevices();
   return devices;
 }
 

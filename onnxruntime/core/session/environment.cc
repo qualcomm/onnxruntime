@@ -359,15 +359,24 @@ std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateExecutionPro
   return eps;
 }
 
-Status Environment::RegisterExecutionProviderPluginLibrary(const ORTCHAR_T* lib_path, const std::string& ep_name) {
+Status Environment::RegisterExecutionProviderLibrary(const ORTCHAR_T* lib_path, const std::string& ep_name) {
   if (ep_libraries_.count(ep_name) > 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", ep_name, " is already registered.");
   }
 
   try {
     // load the library
-    std::unique_ptr<EpLibrary> ep_library(std::make_unique<EpLibraryPlugin>(std::string(ep_name), lib_path));
-    ep_libraries_[ep_name] = std::make_unique<EpInfo>(std::move(ep_library));
+    std::unique_ptr<EpLibrary> ep_library = std::make_unique<EpLibraryPlugin>(std::string(ep_name), lib_path);
+    std::unique_ptr<EpInfo> ep_info = nullptr;
+    ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info));
+
+    // add the pointers to the OrtExecutionDevice instances to our global list
+    execution_devices_.reserve(execution_devices_.size() + ep_info->execution_devices.size());
+    for (const auto& ed : ep_info->execution_devices) {
+      execution_devices_.insert(ed.get());
+    }
+
+    ep_libraries_[ep_name] = std::move(ep_info);
 
   } catch (const std::exception& ex) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to register EP library: ", ep_name, " with error: ", ex.what());
@@ -376,15 +385,21 @@ Status Environment::RegisterExecutionProviderPluginLibrary(const ORTCHAR_T* lib_
   return Status::OK();
 }
 
-Status Environment::UnregisterExecutionProviderPluginLibrary(const std::string& ep_name) {
+Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_name) {
   if (ep_libraries_.count(ep_name) > 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", ep_name, " was not registered.");
   }
 
   try {
-    // unload. remove from map before unloading so we don't get a leftover entry.
+    // unload.
     auto ep_info = std::move(ep_libraries_[ep_name]);
+
+    // remove from map and global list of OrtExecutionDevice* before unloading so we don't get a leftover entry.
     ep_libraries_.erase(ep_name);
+    for (const auto& ed : ep_info->execution_devices) {
+      execution_devices_.erase(ed.get());
+    }
+
     ep_info.reset();
   } catch (const std::exception& ex) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unregister EP library: ", ep_name, " with error: ", ex.what());

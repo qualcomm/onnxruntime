@@ -104,7 +104,7 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
                              _Inout_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container) {
   // TODO: If the session is using autoep selection, use the environment to do selection
   // The OrtExecutionDevice entries are in ep_libraries_;
-  
+
   // we need to disable mem pattern if DML is one of the providers since DML doesn't have the concept of
   // byte addressable memory
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
@@ -131,3 +131,81 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
 
   return nullptr;
 }
+
+namespace onnxruntime {
+// Select execution providers based on the device policy and available devices and add to session
+// TODO: Should this be in session or lower like framework?
+Status SelectEPs(const Environment& env, OrtExecutionProviderDevicePolicy device_policy,
+                 InferenceSession& sess, const OrtLogger& logger) {
+  struct SelectionInfo {
+    OrtEpApi::OrtEpFactory* ep_factory;
+    std::vector<const OrtHardwareDevice*> devices;
+    std::vector<const OrtKeyValuePairs*> ep_metadata;
+  };
+
+  std::unordered_map<std::string, SelectionInfo> eps_selected;
+  const auto add_selection = [&eps_selected, &sess](const OrtExecutionDevice& ed) -> Status {
+    auto iter = eps_selected.find(ed.ep_name);
+    if (iter == eps_selected.end()) {
+      eps_selected[ed.ep_name] = SelectionInfo{ed.ep_factory, {ed.device}, {&ed.ep_metadata}};
+    } else {
+      ORT_ENFORCE(iter->second.ep_factory == ed.ep_factory, "Inconsistent factory pointers. EP:", ed.ep_name);
+      iter->second.devices.push_back(ed.device);
+      iter->second.ep_metadata.push_back(&ed.ep_metadata);
+    }
+
+    auto& config_options = sess.GetMutableSessionOptions().config_options;
+    for (const auto& entry : ed.ep_options.entries) {
+      // preserve user-provided options as they override any defaults the EP factory specified earlier
+      if (config_options.configurations.find(entry.first) == config_options.configurations.end()) {
+        // use AddConfigEntry for the error checking it does
+        ORT_RETURN_IF_ERROR(config_options.AddConfigEntry(entry.first.c_str(), entry.second.c_str()));
+      }
+    }
+
+    return Status::OK();
+  };
+
+  const auto& execution_devices = env.GetExecutionDevices();
+
+  if (device_policy == OrtExecutionProviderDevicePolicy_PREFER_CPU) {
+    // pick first CPU option for now
+    for (const OrtExecutionDevice* ed : execution_devices) {
+      if (ed->device->type == OrtHardwareDeviceType_CPU) {
+        ORT_RETURN_IF_ERROR(add_selection(*ed));
+        break;
+      }
+    }
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Device policy not implemented yet: ", static_cast<int>(device_policy));
+  }
+
+  if (eps_selected.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "No execution providers selected. Please check the device policy and available devices.");
+  }
+
+  // create OrtSessionOptions as that's what the EPs need to use
+  OrtSessionOptions ort_so;
+  // this copy isn't ideal but we need the user provided options which were in a const OrtSesionOptions in the
+  // call to CreateSessionAndLoadModel. I don't think we can make those non-const as existing users may re-use
+  // SessionOptions to create multiple sessions current and doing so would break that.
+  // Consider updating the OrtSessionOptions implementation to support `value` and an optional
+  // const SessionOptions* that can be preferred for reading values if it exists.
+  ort_so.value = sess.GetSessionOptions();
+
+  for (const auto& entry : eps_selected) {
+    OrtEpApi::OrtEp* ep = nullptr;
+    // add the ep_options to session options but leave any existing entries (user provided overrides) untouched.
+    const SelectionInfo& info = entry.second;
+    auto status = info.ep_factory->CreateEp(info.ep_factory, info.devices.data(), info.ep_metadata.data(),
+                                            info.devices.size(), &ort_so, &logger, &ep);
+    if (status != nullptr) {
+      return ToStatus(status);
+    }
+  }
+
+  return Status::OK();
+}
+}  // namespace onnxruntime

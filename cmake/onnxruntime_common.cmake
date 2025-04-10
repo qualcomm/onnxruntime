@@ -226,3 +226,8 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
+
+if(WIN32)
+  # ??? is this safe on all windows variants?
+  target_link_libraries(onnxruntime_common PRIVATE dxcore.lib)
+endif()

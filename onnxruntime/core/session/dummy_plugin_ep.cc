@@ -41,21 +41,11 @@ struct DummyEp : OrtEp, ApiPtrs {
 
 struct DummyEpFactory : OrtEpFactory, ApiPtrs {
   DummyEpFactory(const char* ep_name, ApiPtrs apis) : ApiPtrs(apis), ep_name_{ep_name} {
-    Initialize = InitializeImpl;
-    Shutdown = ShutdownImpl;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
-    GetExecutionDevices = GetExecutionDevicesImpl;
+    GetDeviceInfoIfSupported = GetDeviceInfoIfSupportedImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
-  }
-
-  static OrtStatus* InitializeImpl() noexcept {
-    return nullptr;  // no initialization needed
-  }
-
-  static OrtStatus* ShutdownImpl() noexcept {
-    return nullptr;  // no shutdown needed
   }
 
   static const char* GetNameImpl(OrtEpFactory* this_ptr) {
@@ -68,50 +58,50 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
     return ep->vendor_.c_str();
   }
 
-  static OrtStatus* GetExecutionDevicesImpl(OrtEpFactory* this_ptr,
-                                            const OrtHardwareDevice** devices,
-                                            size_t num_devices,
-                                            OrtExecutionDevice** execution_devices,
-                                            size_t* num_execution_devices) {
+  static bool GetDeviceInfoIfSupportedImpl(OrtEpFactory* this_ptr,
+                                           const OrtHardwareDevice* device,
+                                           _Out_ OrtKeyValuePairs** ep_device_metadata,
+                                           _Out_ OrtKeyValuePairs** ep_options_for_device) {
     DummyEpFactory* ep = static_cast<DummyEpFactory*>(this_ptr);
-    *execution_devices = nullptr;
-    *num_execution_devices = 0;
 
-    gsl::span<const OrtHardwareDevice*> devices_span{devices, num_devices};
-    for (const auto* device : devices_span) {
-      if (device == nullptr) {
-        continue;  // should never happen
-      }
+    if (ep->ep_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
+      // these can be returned as nullptr if you have nothing to add.
+      OrtKeyValuePairs* ep_metadata = nullptr;
+      OrtKeyValuePairs* ep_options = nullptr;
+      ep->ort_api.CreateKeyValuePairs(&ep_metadata);
+      ep->ort_api.CreateKeyValuePairs(&ep_options);
 
-      // FIXME: OrtHardwareDevice needs its own accessors
-      if (ep->ep_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::CPU) {
-        OrtExecutionDevice* execution_device = nullptr;
-        std::vector<const char*> keys;
-        std::vector<const char*> values;
-        // random example using made up options
-        keys.push_back("big_cores");
-        values.push_back("2");
-        keys.push_back("little_cores");
-        values.push_back("4");
-        RETURN_IF_ERROR(
-            ep->ep_api.CreateExecutionDevice(this_ptr, device, keys.data(), values.data(), keys.size(),
-                                             &execution_device));
+      // random example using made up values
+      ep->ort_api.AddKeyValuePair(ep_metadata, "version", "0.1");
+      ep->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
 
-        *execution_devices = execution_device;  // ORT takes ownership
-        *num_execution_devices = 1;
+      *ep_device_metadata = ep_metadata;
+      *ep_options_for_device = ep_options;
 
-        // only one. implementation could potentially have multiple devices
-        return nullptr;
-      }
+      return true;
     }
 
     return nullptr;
   }
 
-  static OrtStatus* CreateEpImpl(OrtEpFactory* this_ptr, const OrtExecutionDevice* /*execution_device*/,
-                                 const OrtSessionOptions* session_options, const OrtLogger* logger, OrtEp** ep) {
+  static OrtStatus* CreateEpImpl(const OrtEpFactory* this_ptr,
+                                 _In_reads_(num_devices) const OrtHardwareDevice* const* /*devices*/,
+                                 _In_reads_(num_devices) const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
+                                 _In_ size_t num_devices,
+                                 _In_ const OrtSessionOptions* session_options,
+                                 _In_ const OrtLogger* logger,
+                                 _Out_ OrtEp** ep) {
+    const DummyEpFactory* factory = static_cast<const DummyEpFactory*>(this_ptr);
+
+    if (num_devices != 1) {
+      // we only registered for CPU and only expected to be selected for one CPU
+      // if you register for multiple devices (e.g. CPU, GPU and maybe NPU) you will get an entry for each device
+      // the EP has been selected for.
+      return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                           "Dummy EP only supports selection for one device.");
+    }
+
     // Create the execution provider
-    DummyEpFactory* factory = static_cast<DummyEpFactory*>(this_ptr);
     RETURN_IF_ERROR(factory->ort_api.Logger_LogMessage(logger,
                                                        OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
                                                        "Creating Dummy EP", ORT_FILE, __LINE__, __FUNCTION__));
@@ -119,10 +109,14 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
     OrtKeyValuePairs* options = nullptr;
     RETURN_IF_ERROR(factory->ep_api.SessionOptionsConfigOptions(session_options, &options));
 
-    // look for any options using this prefix
+    // look for any config options in session_options using this prefix.
+    // values returned from GetDeviceInfoIfSupportedImpl in ep_options have been added to session_options
+    // along with any user provided values/overrides so that they are all in one place.
     const std::string ep_options_prefix = "ep." + factory->ep_name_ + ".";
 
-    // use properties from execution_device if needed
+    // use properties from the device and ep_metadata if needed
+    // const OrtHardwareDevice* device = devices[0];
+    // const OrtKeyValuePairs* ep_metadata = ep_metadata_pairs[0];
 
     auto dummy_ep = std::make_unique<DummyEp>(*factory, *options);
     factory->ort_api.ReleaseKeyValuePairs(options);
@@ -149,12 +143,21 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
 };
 
 //
-// Public symbol
+// Public symbols
 //
-OrtEpFactory* GetEpFactory(const char* ep_name, const OrtApiBase* ort_api_base) {
+OrtStatus* CreateEpFactory(const char* ep_name, const OrtApiBase* ort_api_base, OrtEpFactory** factory) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   const OrtEpApi* ep_api = ort_api->GetEpApi();
+  // we just use a shared static instance.
+  // implementation is also free to allocate on a per-call basis as ReleaseEpFactory will be called
+  // when the EP is no longer needed.
   static DummyEpFactory ep_plugin(ep_name, ApiPtrs{*ort_api, *ep_api});
+  *factory = &ep_plugin;
 
-  return &ep_plugin;
+  return nullptr;
+}
+
+OrtStatus* ReleaseEpFactory(OrtEpFactory* /*factory*/) {
+  // no-op for us
+  return nullptr;
 }

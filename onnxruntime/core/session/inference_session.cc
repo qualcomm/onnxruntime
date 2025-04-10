@@ -2298,6 +2298,10 @@ const SessionOptions& InferenceSession::GetSessionOptions() const {
   return session_options_;
 }
 
+SessionOptions& InferenceSession::GetMutableSessionOptions() {
+  return session_options_;
+}
+
 const DataTransferManager& InferenceSession::GetDataTransferManager() const {
   return data_transfer_mgr_;
 }

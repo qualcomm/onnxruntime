@@ -19,21 +19,16 @@ ORT_API_STATUS_IMPL(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ c
 
 // OrtHardwareDevice and OrtExecutionDevice accessors
 ORT_API(OrtHardwareDeviceType, HardwareDevice_Type, _In_ const OrtHardwareDevice* device);
+ORT_API(int32_t, HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device);
 ORT_API(const char*, HardwareDevice_Vendor, _In_ const OrtHardwareDevice* device);
+ORT_API(int32_t, HardwareDevice_BusId, _In_ const OrtHardwareDevice* device);
 ORT_API(const OrtKeyValuePairs*, HardwareDevice_Properties, _In_ const OrtHardwareDevice* device);
-ORT_API(const char*, ExecutionDevice_EpName, _In_ const OrtExecutionDevice* device);
-ORT_API(const char*, ExecutionDevice_EpVendor, _In_ const OrtExecutionDevice* device);
-ORT_API(const OrtKeyValuePairs*, ExecutionDevice_EpProperties, _In_ const OrtExecutionDevice* device);
-ORT_API(const OrtHardwareDevice*, ExecutionDevice_Device, _In_ const OrtExecutionDevice* device);
 
-ORT_API_STATUS_IMPL(CreateExecutionDevice, _In_ /*const*/ OrtEpApi::OrtEpFactory* ep_factory,
-                    _In_ const OrtHardwareDevice* hardware_device,
-                    _In_reads_(num_ep_device_properties) const char** ep_device_properties_keys,
-                    _In_reads_(num_ep_device_properties) const char** ep_device_properties_values,
-                    _In_ size_t num_ep_device_properties,
-                    _Out_ OrtExecutionDevice** ort_execution_device);
-
-ORT_API(void, ReleaseExecutionDevice, _Frees_ptr_opt_ OrtExecutionDevice* device);
+// ORT_API(const char*, ExecutionDevice_EpName, _In_ const OrtExecutionDevice* device);
+// ORT_API(const char*, ExecutionDevice_EpVendor, _In_ const OrtExecutionDevice* device);
+// ORT_API(const OrtKeyValuePairs*, ExecutionDevice_EpMetadata, _In_ const OrtExecutionDevice* device);
+// ORT_API(const OrtKeyValuePairs*, ExecutionDevice_EpOptions, _In_ const OrtExecutionDevice* device);
+// ORT_API(const OrtHardwareDevice*, ExecutionDevice_Device, _In_ const OrtExecutionDevice* device);
 
 // user must call ReleaseKeyValuePairs when done.
 ORT_API_STATUS_IMPL(SessionOptionsConfigOptions, _In_ const OrtSessionOptions* session_options,
@@ -66,6 +61,10 @@ class EpLibraryInternal : EpLibrary {
 
  private:
   OrtEpApi::OrtEpFactory& factory_;
+};
+
+struct EpLibraryProviderBridge : EpLibrary {
+  // can we extract Provider from provider_bridge_ort.cc and plug it in here?
 };
 
 // this is based on Provider in provider_bridge_ort.cc
