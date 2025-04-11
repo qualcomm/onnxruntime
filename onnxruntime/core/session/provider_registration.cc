@@ -176,7 +176,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* /*sess_options*/,
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* /*sess_options*/,
                     _In_ OrtEnv* /*env*/, _In_ const char* /*ep_name*/,
                     _In_reads_(num_op_options) const char* const* /*ep_option_keys*/,
                     _In_reads_(num_op_options) const char* const* /*ep_option_vals*/,

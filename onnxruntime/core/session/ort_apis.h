@@ -585,4 +585,8 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOpt
                     _In_reads_(num_op_options) const char* const* ep_option_vals,
                     size_t num_ep_options);
 
+ORT_API_STATUS_IMPL(SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* sess_options,
+                    _In_ OrtExecutionProviderDevicePolicy policy,
+                    _In_opt_ EpSelectionDelegate* delegate);
+
 }  // namespace OrtApis

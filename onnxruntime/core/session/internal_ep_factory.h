@@ -8,19 +8,8 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
+struct EpLibraryInternal;
 struct SessionOptions;
-
-class InternalEp : public OrtEpApi::OrtEp {
- public:
-  InternalEp(std::unique_ptr<IExecutionProvider> internal_ep);
-
-  const char* GetName() const {
-    return internal_ep_->Type().c_str();
-  }
-
- private:
-  std::unique_ptr<IExecutionProvider> internal_ep_;
-};
 
 class InternalEpFactory : public OrtEpApi::OrtEpFactory {
  public:
@@ -41,11 +30,21 @@ class InternalEpFactory : public OrtEpApi::OrtEpFactory {
                                 _Out_ OrtKeyValuePairs** ep_device_metadata,
                                 _Out_ OrtKeyValuePairs** ep_options_for_device) const;
 
+  // we don't implement this. code should check
   OrtStatus* CreateEp(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
                       _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
                       _In_ size_t num_devices,
                       _In_ const OrtSessionOptions* session_options,
                       _In_ const OrtLogger* logger, _Out_ OrtEpApi::OrtEp** ep);
+
+  // we implement this. provide the same args in case we need something from device or ep_metadata_pairs in the future.
+  // TODO: reutrn unique_ptr or shared_ptr? latter might be more flexible as it doesn't require the implementer to
+  // create a new instance every time. it's going to become a shared_ptr when added to InferenceSession anyway.
+  OrtStatus* CreateIExecutionProvider(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                      _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
+                                      _In_ size_t num_devices,
+                                      _In_ const OrtSessionOptions* session_options,
+                                      _In_ const OrtLogger* logger, _Out_ std::shared_ptr<IExecutionProvider>& ep);
 
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEpApi::OrtEp* ep);
@@ -58,4 +57,5 @@ class InternalEpFactory : public OrtEpApi::OrtEpFactory {
 
   std::vector<std::unique_ptr<InternalEpFactory>> eps_;  // EP instances created by this factory
 };
+
 }  // namespace onnxruntime

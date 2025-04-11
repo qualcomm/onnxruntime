@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 // See docs\c_cxx\README.md on generating the Doxygen documentation from this file
@@ -421,6 +421,11 @@ typedef enum OrtExecutionProviderDevicePolicy {
   OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY,
   OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER,
 } OrtExecutionProviderDevicePolicy;
+
+// TODO: If the ORT EP selection can pick multiple devices, why don't we give the user the same opportunity?
+typedef int32_t (*EpSelectionDelegate)(_In_ const OrtExecutionDevice** ep_devices, _In_ size_t num_devices,
+                                       _In_ const OrtKeyValuePairs* model_metadata,
+                                       _In_opt_ const OrtKeyValuePairs* runtime_metadata);
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -4987,6 +4992,10 @@ struct OrtApi {
                   _In_reads_(num_op_options) const char* const* ep_option_keys,
                   _In_reads_(num_op_options) const char* const* ep_option_vals,
                   size_t num_ep_options);
+
+  ORT_API2_STATUS(SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* sess_options,
+                  _In_ OrtExecutionProviderDevicePolicy policy,
+                  _In_opt_ EpSelectionDelegate* delegate);
 };
 
 struct OrtEpApi {
@@ -5057,7 +5066,7 @@ struct OrtEpApi {
                                        _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
                                        _In_ size_t num_devices,
                                        _In_ const OrtSessionOptions* session_options,
-                                       _In_ const OrtLogger* logger, _Out_ OrtEp** ep);
+                                       _In_ const OrtLogger* logger, _Outptr_ OrtEp** ep);
 
     // Function ORT calls to release an EP instance.
     void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, OrtEp* ep);
@@ -5067,10 +5076,10 @@ struct OrtEpApi {
   typedef OrtStatus* (*CreateEpFactoryFn)(_In_ const char* ep_name, _In_ const OrtApiBase* ort_api_base,
                                           _Out_ OrtEpFactory** factory);
   typedef OrtStatus* (*ReleaseEpFactoryFn)(_In_ OrtEpFactory* factory);
-  ORT_API2_STATUS(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const ORTCHAR_T* path,
-                  _In_ const char* ep_name);
+  ORT_API2_STATUS(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name,
+                  _In_ const ORTCHAR_T* path);
   // ORT will call ep_plugin->Shutdown prior to unloading the library.
-  ORT_API2_STATUS(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* ep_name);
+  ORT_API2_STATUS(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name);
 
   // OrtExecutionDevice accessors
   OrtHardwareDeviceType(ORT_API_CALL* HardwareDevice_Type)(_In_ const OrtHardwareDevice* device);

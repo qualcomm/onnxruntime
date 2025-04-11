@@ -12,10 +12,19 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/providers/providers.h"
 
+struct EpSelectionPolicy {
+  bool enable{false};
+  OrtExecutionProviderDevicePolicy policy = OrtExecutionProviderDevicePolicy_DEFAULT;
+  EpSelectionDelegate* delegate{};
+};
+
 struct OrtSessionOptions {
   onnxruntime::SessionOptions value;
   std::vector<OrtCustomOpDomain*> custom_op_domains_;
   std::vector<std::shared_ptr<onnxruntime::IExecutionProviderFactory>> provider_factories;
+
+  EpSelectionPolicy ep_selection_policy;
+
   OrtSessionOptions() = default;
   ~OrtSessionOptions();
   OrtSessionOptions(const OrtSessionOptions& other);

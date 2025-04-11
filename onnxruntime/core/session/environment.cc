@@ -5,12 +5,9 @@
 
 #include "core/common/basic_types.h"
 #include "core/framework/allocator_utils.h"
-#include "core/framework/execution_provider.h"
-#include "core/framework/plugin_execution_provider.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "core/platform/device_discovery.h"
-#include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/inference_session.h"
@@ -322,6 +319,9 @@ Internal copy node
     // fire off startup telemetry (this call is idempotent)
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProcessInfo();
+
+    // register internal EPs for autoep selection
+    ORT_RETURN_IF_ERROR(CreateAndRegisterInternalEps());
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -353,57 +353,11 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
                 provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
 }
 
-std::vector<std::unique_ptr<IExecutionProvider>> Environment::CreateExecutionProviders(
-    const OrtSessionOptions& /*so*/, const InferenceSession& /*session*/) {
-  std::vector<std::unique_ptr<IExecutionProvider>> eps;
-
-  // use entries in ep_libraries_ to select EPs to create
-
-  return eps;
-}
-
-Status Environment::CreateInternalEps() {
-  // TODO: Should probably put the functions to create each internal EP in a separate file.
-
-  // CPU EP
-  const auto is_supported = [](const OrtHardwareDevice* device,
-                               OrtKeyValuePairs** /*ep_metadata*/,
-                               OrtKeyValuePairs** /*ep_options*/) -> bool {
-    if (device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
-      // we have nothing to add.
-
-      // use OrtApis directly to allocate or `new OrtKeyValuePairs` is fine as well. can add values directly
-      // OrtApis::CreateKeyValuePairs(ep_metadata);
-      //*ep_options = new OrtKeyValuePairs();
-      //(*ep_options)->Add("options", "value");
-
-      return true;
-    }
-
-    return false;
-  };
-
-  const auto create_cpu_ep = [](const SessionOptions& so, const logging::Logger& session_logger) {
-    CPUExecutionProviderInfo epi{so.enable_cpu_mem_arena};
-    auto ep = std::make_unique<CPUExecutionProvider>(epi);
-    ep->SetLogger(&session_logger);
-    return ep;
-  };
-
-  std::string ep_name = kCpuExecutionProvider;
-  auto cpu_factory = std::make_unique<InternalEpFactory>(ep_name, "Microsoft",
-                                                         is_supported, create_cpu_ep);
-  std::unique_ptr<EpLibrary> cpu_library = std::make_unique<EpLibraryInternal>(std::move(cpu_factory));
-
-  ORT_RETURN_IF_ERROR(RegisterExecutionProviderLibrary(std::move(cpu_library), ep_name));
-
-  return Status::OK();
-}
-
-Status Environment::RegisterExecutionProviderLibrary(std::unique_ptr<EpLibrary> ep_library,
-                                                     const std::string& ep_name) {
-  if (ep_libraries_.count(ep_name) > 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", ep_name, " is already registered.");
+Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
+                                                     std::unique_ptr<EpLibrary> ep_library,
+                                                     InternalEpFactory* internal_factory) {
+  if (ep_libraries_.count(registration_name) > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
   }
 
   try {
@@ -417,20 +371,38 @@ Status Environment::RegisterExecutionProviderLibrary(std::unique_ptr<EpLibrary> 
       execution_devices_.insert(ed.get());
     }
 
-    ep_libraries_[ep_name] = std::move(ep_info);
+    if (internal_factory) {
+      internal_ep_factories_.insert(internal_factory);
+    }
+
+    ep_libraries_[registration_name] = std::move(ep_info);
 
   } catch (const std::exception& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to register EP library: ", ep_name, " with error: ", ex.what());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Failed to register EP library under '", registration_name, "' with error: ", ex.what());
   }
 
   return Status::OK();
 }
 
-Status Environment::RegisterExecutionProviderLibrary(const ORTCHAR_T* lib_path, const std::string& ep_name) {
-  // load the library
-  std::unique_ptr<EpLibrary> ep_library = std::make_unique<EpLibraryPlugin>(std::string(ep_name), lib_path);
+Status Environment::CreateAndRegisterInternalEps() {
+  auto internal_ep_libraries = InternalEpLibraryCreator::CreateInternalEps();
+  for (auto& ep_library : internal_ep_libraries) {
+    // we do a std::move in the function call so need a valid pointer for the args after the move
+    auto* ep_library_ptr = ep_library.get();
+    ORT_RETURN_IF_ERROR(RegisterExecutionProviderLibrary(ep_library_ptr->RegistrationName(),
+                                                         std::move(ep_library),
+                                                         &ep_library_ptr->GetInternalFactory()));
+  }
 
-  return RegisterExecutionProviderLibrary(std::move(ep_library), ep_name);
+  return Status::OK();
+}
+
+Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path) {
+  // load the library
+  std::unique_ptr<EpLibrary> ep_library = std::make_unique<EpLibraryPlugin>(registration_name, lib_path);
+
+  return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library));
 }
 
 Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_name) {
@@ -444,11 +416,15 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
 
     // remove from map and global list of OrtExecutionDevice* before unloading so we don't get a leftover entry.
     ep_libraries_.erase(ep_name);
+    if (ep_info->internal_factory) {
+      internal_ep_factories_.erase(ep_info->internal_factory);
+    }
+
     for (const auto& ed : ep_info->execution_devices) {
       execution_devices_.erase(ed.get());
     }
 
-    ep_info.reset();
+    ep_info.reset();  // explicit but only so it's easier to debug an issue by stepping into this.
   } catch (const std::exception& ex) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unregister EP library: ", ep_name, " with error: ", ex.what());
   }
@@ -457,5 +433,66 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
 }
 
 Environment::~Environment() = default;
+
+Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
+                                   InternalEpFactory* internal_factory) {
+  if (!library_in) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EpLibrary was null");
+  }
+
+  out.reset(new EpInfo());  // can't use make_unique with private ctor
+  EpInfo& instance = *out;
+  instance.library = std::move(library_in);
+  instance.internal_factory = internal_factory;
+
+  ORT_RETURN_IF_ERROR(instance.library->Load());
+  const auto& factories = instance.library->GetFactories();
+
+  for (auto* factory_ptr : factories) {
+    ORT_ENFORCE(factory_ptr != nullptr, "Factory pointer was null. EpLibrary should prevent this. Library:",
+                instance.library->RegistrationName());
+
+    auto& factory = *factory_ptr;
+
+    // for each device
+    for (const auto& device : DeviceDiscovery::GetDevices()) {
+      OrtKeyValuePairs* ep_metadata = nullptr;
+      OrtKeyValuePairs* ep_options = nullptr;
+
+      if (factory.GetDeviceInfoIfSupported(&factory, &device, &ep_metadata, &ep_options)) {
+        auto ed = std::make_unique<OrtExecutionDevice>();
+        ed->ep_name = factory.GetName(&factory);
+        ed->ep_vendor = factory.GetVendor(&factory);
+        ed->device = &device;
+        if (ep_metadata) {
+          ed->ep_metadata = *ep_metadata;
+        }
+        if (ep_options) {
+          ed->ep_options = *ep_options;
+        }
+
+        ed->ep_factory = &factory;
+
+        instance.execution_devices.push_back(std::move(ed));
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+// OrtEpApi::OrtEpFactory& GetFactory() {
+//   // Load must have been successful to get to here so this will should always be valid
+//   return *library->GetFactory();
+// }
+
+Environment::EpInfo::~EpInfo() {
+  execution_devices.clear();
+  auto status = library->Unload();
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(WARNING) << "Failed to unload EP library registered under '" << library->RegistrationName()
+                          << "' with error: " << status.ErrorMessage();
+  }
+}
 
 }  // namespace onnxruntime

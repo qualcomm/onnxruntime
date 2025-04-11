@@ -3099,7 +3099,10 @@ static constexpr OrtApi ort_api_1_to_22 = {
     &OrtApis::RemoveKeyValuePair,
     &OrtApis::ReleaseKeyValuePairs,
 
-    &OrtApis::GetEpApi};
+    &OrtApis::GetEpApi,
+    &OrtApis::SessionOptionsAppendExecutionProvider_V2,
+    &OrtApis::SessionOptionsSetEpSelectionPolicy,
+};
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
 static_assert(sizeof(OrtApiBase) == sizeof(void*) * 2, "New methods can't be added to OrtApiBase as it is not versioned");

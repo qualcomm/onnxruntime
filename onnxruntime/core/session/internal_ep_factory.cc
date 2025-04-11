@@ -3,8 +3,10 @@
 
 #include "core/session/internal_ep_factory.h"
 
-#include "core/framework/session_options.h"
+// #include "core/session/abi_devices.h"
 #include "core/session/abi_session_options_impl.h"
+// #include "core/session/ep_api.h"
+
 
 namespace onnxruntime {
 namespace {
@@ -42,22 +44,9 @@ struct Forward {
   static void ReleaseEp(OrtEpApi::OrtEpFactory* this_ptr, OrtEpApi::OrtEp* ep) {
     static_cast<InternalEpFactory*>(this_ptr)->ReleaseEp(ep);
   }
-
-  //
-  // InternalEp
-  //
-  static const char* GetEpName(const OrtEpApi::OrtEp* this_ptr) {
-    return static_cast<const InternalEp*>(this_ptr)->GetName();
-  }
 };
 
 }  // namespace
-
-InternalEp::InternalEp(std::unique_ptr<IExecutionProvider> internal_ep)
-    : internal_ep_{std::move(internal_ep)} {
-  ort_version_supported = ORT_API_VERSION;
-  OrtEp::GetName = Forward::GetEpName;
-}
 
 InternalEpFactory::InternalEpFactory(const std::string& ep_name, const std::string& vendor,
                                      IsSupportedFunc&& is_supported_func,
@@ -85,19 +74,29 @@ bool InternalEpFactory::GetDeviceInfoIfSupported(const OrtHardwareDevice* device
 OrtStatus* InternalEpFactory::CreateEp(const OrtHardwareDevice* const* /*devices*/,
                                        const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
                                        size_t /*num_devices*/,
-                                       const OrtSessionOptions* api_session_options,
-                                       const OrtLogger* api_logger,
-                                       OrtEpApi::OrtEp** ep) {
+                                       const OrtSessionOptions* /*api_session_options*/,
+                                       const OrtLogger* /*api_logger*/,
+                                       OrtEpApi::OrtEp** /*ep*/) {
+  ORT_THROW("Internal error. CreateIExecutionProvider should be used for InternalEpFactory.");
+}
+
+OrtStatus* InternalEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
+                                                       const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
+                                                       size_t /*num_devices*/,
+                                                       const OrtSessionOptions* api_session_options,
+                                                       const OrtLogger* api_logger,
+                                                       std::shared_ptr<IExecutionProvider>& ep) {
   // convert API types to internals
   const SessionOptions& session_options = api_session_options->value;
   const auto& logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(api_logger);
 
-  auto internal_ep = create_func_(session_options, logger);
-  *ep = new InternalEp(std::move(internal_ep));
+  ep = create_func_(session_options, logger);
+
   return nullptr;
 }
 
-void InternalEpFactory::ReleaseEp(OrtEpApi::OrtEp* ep) {
-  delete static_cast<InternalEp*>(ep);
+void InternalEpFactory::ReleaseEp(OrtEpApi::OrtEp* /*ep*/) {
+  // we never create an OrtEp so we should never be trying to release one
+  ORT_THROW("Internal error. No ReleaseEp call is required for InternalEpFactory.");
 }
 }  // namespace onnxruntime

@@ -5,5 +5,5 @@
 
 #include "onnxruntime_c_api.h"
 
-OrtStatus* CreateEpFactory(const char* ep_name, const OrtApiBase* ort_api_base, OrtEpApi::OrtEpFactory** factory);
+OrtStatus* CreateEpFactory(const char* registration_name, const OrtApiBase* ort_api_base, OrtEpApi::OrtEpFactory** factory);
 OrtStatus* ReleaseEpFactory(OrtEpApi::OrtEpFactory* factory);

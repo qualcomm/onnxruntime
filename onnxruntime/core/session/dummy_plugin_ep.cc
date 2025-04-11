@@ -132,13 +132,14 @@ struct DummyEpFactory : OrtEpFactory, ApiPtrs {
 //
 // Public symbols
 //
-OrtStatus* CreateEpFactory(const char* ep_name, const OrtApiBase* ort_api_base, OrtEpFactory** factory) {
+OrtStatus* CreateEpFactory(const char* /*registration_name*/, const OrtApiBase* ort_api_base, OrtEpFactory** factory) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   const OrtEpApi* ep_api = ort_api->GetEpApi();
   // we just use a shared static instance.
   // implementation is also free to allocate on a per-call basis as ReleaseEpFactory will be called
   // when the EP is no longer needed.
-  static DummyEpFactory ep_plugin(ep_name, ApiPtrs{*ort_api, *ep_api});
+  // Factory could use registration_name or define its own EP name.
+  static DummyEpFactory ep_plugin("smart_ep", ApiPtrs{*ort_api, *ep_api});
   *factory = &ep_plugin;
 
   return nullptr;

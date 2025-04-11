@@ -51,7 +51,7 @@ struct equal_to<OrtHardwareDevice> {
 };
 }  // namespace std
 
-// EP + HardwareDevice. Can potentially become internal as we're currently not using in the public API
+// TODO: Rename OrtEpDevice? More consistent with other 'EP' related things in the API
 struct OrtExecutionDevice {
   std::string ep_name;
   std::string ep_vendor;

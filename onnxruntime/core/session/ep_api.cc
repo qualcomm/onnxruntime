@@ -3,42 +3,28 @@
 
 #include "core/session/ep_api.h"
 
-#include "core/common/basic_types.h"
 #include "core/framework/error_code_helper.h"
-
-// #include "core/framework/ort_value.h"
-// #include "core/framework/onnxruntime_typeinfo.h"
-// #include "core/framework/tensor_type_and_shape.h"
-// #include "core/graph/constants.h"
-// #include "core/graph/model.h"
-// #include "core/graph/model_editor_api_types.h"
-// #include "core/graph/onnx_protobuf.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/abi_session_options_impl.h"
-// #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
-// #include "core/session/utils.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_c_api.h"
 
 using namespace onnxruntime;
 namespace OrtExecutionProviderApi {
-ORT_API_STATUS_IMPL(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, const ORTCHAR_T* path, const char* ep_name) {
+ORT_API_STATUS_IMPL(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* registration_name,
+                    const ORTCHAR_T* path) {
   API_IMPL_BEGIN
-  // provider bridge EPs can provide path to library to load in session options.
-  // might need logic to convert from session option ConfigParams to the EP specific settings
-  //
-  ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().RegisterExecutionProviderLibrary(path, ep_name));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().RegisterExecutionProviderLibrary(registration_name, path));
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* ep_name) {
+ORT_API_STATUS_IMPL(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* registration_name) {
   API_IMPL_BEGIN
-  //
-  ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().UnregisterExecutionProviderLibrary(ep_name));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().UnregisterExecutionProviderLibrary(registration_name));
   return nullptr;
   API_IMPL_END
 }
@@ -138,65 +124,3 @@ ORT_API(const OrtEpApi*, OrtExecutionProviderApi::GetEpApi) {
 }
 
 }  // namespace OrtExecutionProviderApi
-
-namespace onnxruntime {
-
-Status EpLibraryPlugin::Load() {
-  std::lock_guard<std::mutex> lock{mutex_};
-  try {
-    if (!factory_) {
-      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(library_path_, false, &handle_));
-
-      OrtEpApi::CreateEpFactoryFn create_fn;
-      ORT_RETURN_IF_ERROR(
-          Env::Default().GetSymbolFromLibrary(handle_, "CreateEpFactory", reinterpret_cast<void**>(&create_fn)));
-
-      OrtStatus* status = create_fn(ep_name_.c_str(), OrtGetApiBase(), &factory_);
-      if (status != nullptr) {
-        return ToStatus(status);
-      }
-    }
-  } catch (const std::exception& ex) {
-    // TODO: Add logging of exception
-    auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load execution provider library: ", library_path_,
-                                  " with error: ", ex.what());
-    auto unload_status = Unload();  // If anything fails we unload the library
-    if (!unload_status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Failed to unload execution provider library: " << library_path_ << " with error: "
-                          << unload_status.ErrorMessage();
-    }
-  }
-
-  return Status::OK();
-}
-
-Status EpLibraryPlugin::Unload() {
-  if (handle_) {
-    if (factory_) {
-      try {
-        OrtEpApi::ReleaseEpFactoryFn release_fn;
-        ORT_RETURN_IF_ERROR(
-            Env::Default().GetSymbolFromLibrary(handle_, "ReleaseEpFactory", reinterpret_cast<void**>(&release_fn)));
-
-        OrtStatus* status = release_fn(factory_);
-        if (status != nullptr) {
-          LOGS_DEFAULT(ERROR) << "ReleaseEpFactory failed for: " << library_path_ << " with error: "
-                              << ToStatus(status).ErrorMessage();
-        }
-
-      } catch (const std::exception& ex) {
-        auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load execution provider library: ", library_path_,
-                                      " with error: ", ex.what());
-      }
-    }
-
-    ORT_RETURN_IF_ERROR(Env::Default().UnloadDynamicLibrary(handle_));
-  }
-
-  library_path_ = nullptr;
-  factory_ = nullptr;
-  handle_ = nullptr;
-
-  return Status::OK();
-}
-}  // namespace onnxruntime
