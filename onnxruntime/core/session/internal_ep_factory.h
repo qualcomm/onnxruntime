@@ -17,8 +17,8 @@ class InternalEpFactory : public OrtEpApi::OrtEpFactory {
                                              OrtKeyValuePairs** ep_metadata,
                                              OrtKeyValuePairs** ep_options)>;
 
-  using CreateFunc = std::function<std::unique_ptr<IExecutionProvider>(const SessionOptions& session_options,
-                                                                       const logging::Logger& logger)>;
+  using CreateFunc = std::function<std::unique_ptr<IExecutionProvider>(const OrtSessionOptions& session_options,
+                                                                       const OrtLogger& session_logger)>;
   InternalEpFactory(const std::string& ep_name, const std::string& vendor,
                     IsSupportedFunc&& is_supported_func,
                     CreateFunc&& create_func);

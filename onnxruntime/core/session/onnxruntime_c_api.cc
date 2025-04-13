@@ -33,6 +33,7 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
 #include "core/session/environment.h"
+#include "core/session/ep_api.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
@@ -2396,6 +2397,7 @@ ORT_API(const OrtCompileApi*, OrtApis::GetCompileApi) {
   fprintf(stderr, "The Compile API is not supported in a minimal build.\n");
   return nullptr;
 #endif
+}
 
 ORT_API(void, OrtApis::CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out) {
   auto kvps = std::make_unique<OrtKeyValuePairs>();

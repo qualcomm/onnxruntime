@@ -5,9 +5,6 @@
 
 #include <string>
 #include <unordered_map>
-// struct to provider ownership via std::string as well as support the GetKeyValuePairs
-// TODO: Validate adding entries doesn't invalidate existing pointers. assuming std::unordered_map is smart enough to
-//       std::move any strings in it.
 
 struct OrtKeyValuePairs {
   std::unordered_map<std::string, std::string> entries;

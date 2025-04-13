@@ -8,9 +8,10 @@
 #include "core/common/common.h"
 #include "core/session/internal_ep_factory.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/provider_bridge_ep_factory.h"
+#include "core/session/provider_bridge_library.h"
 
 namespace onnxruntime {
-class InternalEpFactory;
 
 struct EpLibrary {
   virtual const char* RegistrationName() const = 0;
@@ -25,7 +26,7 @@ struct EpLibraryInternal : EpLibrary {
   }
 
   const char* RegistrationName() const override {
-    return factory_->GetName();  // internally registered so same as ep name
+    return factory_->GetName();  // same as EP name for internally registered libraries
   }
 
   const std::vector<OrtEpApi::OrtEpFactory*>& GetFactories() override {
@@ -37,17 +38,41 @@ struct EpLibraryInternal : EpLibrary {
     return *factory_;
   }
 
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryInternal);
+
  private:
-  std::unique_ptr<InternalEpFactory> factory_;
+  std::unique_ptr<InternalEpFactory> factory_;         // all internal EPs register a single factory currently
   std::vector<OrtEpApi::OrtEpFactory*> factory_ptrs_;  // for convenience
 };
 
 struct EpLibraryProviderBridge : EpLibrary {
-  // can we extract Provider from provider_bridge_ort.cc and plug it in here?
+  EpLibraryProviderBridge(const std::string& registration_name, const ORTCHAR_T* library_path)
+      : registration_name_{registration_name},
+        library_path_{library_path},
+        provider_library_{library_path} {
+  }
+
+  const char* RegistrationName() const override {
+    return registration_name_.c_str();
+  }
+
+  const std::vector<OrtEpApi::OrtEpFactory*>& GetFactories() override {
+    return factory_ptrs_;
+  }
+
+  Status Load() override;
+  Status Unload() override;
+
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryProviderBridge);
+
+ private:
+  std::string registration_name_;
+  std::filesystem::path library_path_;
+  ProviderLibrary provider_library_;  // handles onnxruntime_providers_shared and the provider bridge EP library
+  std::vector<std::unique_ptr<ProviderBridgeEpFactory>> factories_;
+  std::vector<OrtEpApi::OrtEpFactory*> factory_ptrs_;  // for convenience
 };
 
-// this is based on Provider in provider_bridge_ort.cc
-// TODO: is Stuart's way better?
 struct EpLibraryPlugin : EpLibrary {
   EpLibraryPlugin(const std::string& registration_name, const ORTCHAR_T* library_path)
       : registration_name_{registration_name},
@@ -66,14 +91,14 @@ struct EpLibraryPlugin : EpLibrary {
 
   Status Unload();
 
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryPlugin);
+
  private:
   std::mutex mutex_;
   const std::string registration_name_;
-  const ORTCHAR_T* library_path_;
-  std::vector<OrtEpApi::OrtEpFactory*> factories_{};
+  const std::filesystem::path library_path_;
   void* handle_{};
-
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryPlugin);
+  std::vector<OrtEpApi::OrtEpFactory*> factories_{};
 };
 
 // helper to create EpLibrary instances for all the EPs that are internally included in this build

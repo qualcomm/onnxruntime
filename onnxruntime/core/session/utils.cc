@@ -19,84 +19,8 @@ using namespace onnxruntime;
 namespace {
 // Select execution providers based on the device policy and available devices and add to session
 // TODO: Should this be in session or lower like framework?
-Status AutoSelectEPs(const Environment& env, const OrtSessionOptions* options, InferenceSession& sess) {
-  struct SelectionInfo {
-    OrtEpApi::OrtEpFactory* ep_factory;
-    std::vector<const OrtHardwareDevice*> devices;
-    std::vector<const OrtKeyValuePairs*> ep_metadata;
-  };
-
-  // Initial idea is that we have at most 1 NPU, 1 GPU, _maybe_ 2 CPU if ORT is a fallback to an IHV CPU EP to ensure
-  // we cover opsets and operators that the IHV CPU EP does not support. TBD if that is required, but for now:
-  // Indexes are as follows.
-  // 0: NPU EP name
-  // 1: GPU EP name
-  // 2: CPU EP (excluding ORT)
-  // 3: ORT CPU EP
-  std::array<std::string, 4> ep_priority_order;
-
-  std::unordered_map<std::string, SelectionInfo> eps_selected;
-  const auto add_selection = [&eps_selected, &sess, &ep_priority_order](const OrtExecutionDevice& ed) -> Status {
-    switch (ed.device->type) {
-      case OrtHardwareDeviceType::OrtHardwareDeviceType_NPU:
-        assert(ep_priority_order[0].empty());
-        ep_priority_order[0] = ed.ep_name;
-        break;
-      case OrtHardwareDeviceType::OrtHardwareDeviceType_GPU:
-        assert(ep_priority_order[1].empty());
-        ep_priority_order[1] = ed.ep_name;
-        break;
-      case OrtHardwareDeviceType::OrtHardwareDeviceType_CPU:
-        if (ed.ep_name != kCpuExecutionProvider) {
-          assert(ep_priority_order[2].empty());
-          ep_priority_order[2] = ed.ep_name;
-        } else {
-          ep_priority_order[3] = ed.ep_name;
-        }
-        break;
-    }
-
-    auto iter = eps_selected.find(ed.ep_name);
-    if (iter == eps_selected.end()) {
-      eps_selected[ed.ep_name] = SelectionInfo{ed.ep_factory, {ed.device}, {&ed.ep_metadata}};
-    } else {
-      ORT_ENFORCE(iter->second.ep_factory == ed.ep_factory, "Inconsistent factory pointers. EP:", ed.ep_name);
-      iter->second.devices.push_back(ed.device);
-      iter->second.ep_metadata.push_back(&ed.ep_metadata);
-    }
-
-    auto& config_options = sess.GetMutableSessionOptions().config_options;
-    for (const auto& entry : ed.ep_options.entries) {
-      // preserve user-provided options as they override any defaults the EP factory specified earlier
-      if (config_options.configurations.find(entry.first) == config_options.configurations.end()) {
-        // use AddConfigEntry for the error checking it does
-        ORT_RETURN_IF_ERROR(config_options.AddConfigEntry(entry.first.c_str(), entry.second.c_str()));
-      }
-    }
-
-    return Status::OK();
-  };
-
+Status AutoSelectEPs(const Environment& env, InferenceSession& sess, const std::string& ep_to_select) {
   const auto& execution_devices = env.GetExecutionDevices();
-
-  ORT_ENFORCE(options->ep_selection_policy.delegate == nullptr,
-              "EP selection delegate support is not implemented yet.");
-  ORT_ENFORCE(options->ep_selection_policy.policy == OrtExecutionProviderDevicePolicy_PREFER_CPU,
-              "Only OrtExecutionProviderDevicePolicy_DEFAULT policy is currently implemented.");
-  if (options->ep_selection_policy.policy == OrtExecutionProviderDevicePolicy_PREFER_CPU) {
-    // pick first CPU option for now
-    for (const OrtExecutionDevice* ed : execution_devices) {
-      if (ed->device->type == OrtHardwareDeviceType_CPU) {
-        ORT_RETURN_IF_ERROR(add_selection(*ed));
-        break;
-      }
-    }
-  }
-
-  if (eps_selected.empty()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "No execution providers selected. Please check the device policy and available devices.");
-  }
 
   // FIXME: Is this too fragile? The EP can't keep a pointer to or read from the session options the CreateEp
   // gets once that call returns as it's pointing to this local variable.
@@ -114,38 +38,39 @@ Status AutoSelectEPs(const Environment& env, const OrtSessionOptions* options, I
   ort_so.value = sess.GetSessionOptions();
   const auto& session_logger = sess.GetLogger();
   // OrtLogger is a cast from logging::Logger
-  const OrtLogger* api_session_logger = reinterpret_cast<const OrtLogger*>(&session_logger);
+  const OrtLogger* api_session_logger = session_logger->ToExternal();
 
-  bool disable_ort_cpu_ep = ort_so.value.config_options.GetConfigEntry(kOrtSessionOptionsDisableCPUEPFallback) == "1";
-  size_t end = ep_priority_order.size();
-  if (disable_ort_cpu_ep) {
-    // skip the ORT CPU EP if the user has disabled it. that's always in the last slot.
-    --end;
-  }
-
-  for (size_t idx = 0; idx < end; ++idx) {
-    const auto& ep_name = ep_priority_order[idx];
-    if (ep_name.empty()) {
+  // CPU
+  for (const auto* device : execution_devices) {
+    if (device->ep_name != ep_to_select) {
       continue;
     }
 
-    const auto& info = eps_selected[ep_name];
-    InternalEpFactory* internal_factory = env.GetInternalEpFactory(info.ep_factory);
+    InternalEpFactory* internal_factory = nullptr;
+    if (device->ep_name == kCpuExecutionProvider) {
+      if (ep_to_select == kCpuExecutionProvider) {
+        internal_factory = env.GetInternalEpFactory(device->ep_factory);
+      }
+    } else if (device->ep_name == kDmlExecutionProvider) {
+    }
+
+    // in the real implementation multiple devices can be assigned to an EP
+    std::vector<const OrtHardwareDevice*> devices{device->device};
+    std::vector<const OrtKeyValuePairs*> ep_metadata{&device->ep_metadata};
+
     std::shared_ptr<IExecutionProvider> ep;
     if (internal_factory) {
       // this is a factory we created and registered
-      OrtStatus* status = internal_factory->CreateIExecutionProvider(info.devices.data(), info.ep_metadata.data(),
-                                                                     info.devices.size(), &ort_so, api_session_logger,
-                                                                     ep);
+      OrtStatus* status = internal_factory->CreateIExecutionProvider(devices.data(), ep_metadata.data(),
+                                                                     devices.size(), &ort_so, api_session_logger, ep);
       if (status != nullptr) {
         return ToStatus(status);
       }
     } else {
       OrtEpApi::OrtEp* api_ep = nullptr;
       // add the ep_options to session options but leave any existing entries (user provided overrides) untouched.
-      auto status = info.ep_factory->CreateEp(info.ep_factory, info.devices.data(), info.ep_metadata.data(),
-                                              info.devices.size(), &ort_so, api_session_logger,
-                                              &api_ep);
+      auto status = device->ep_factory->CreateEp(device->ep_factory, devices.data(), ep_metadata.data(),
+                                                 devices.size(), &ort_so, api_session_logger, &api_ep);
       if (status != nullptr) {
         return ToStatus(status);
       }
@@ -219,9 +144,11 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   }
 
   // if there are no providers registered, and there's an ep selection policy set, do auto ep selection
-  if (options->provider_factories.empty() &&
-      options->ep_selection_policy.enable) {
-    ORT_API_RETURN_IF_STATUS_NOT_OK(AutoSelectEPs(env->GetEnvironment(), options, *sess));
+  // TEMPORARY for testing. No providers registered equates to defaulting to ORT CPU EP currently so we need to honour
+  // that in the real world.
+  auto auto_select_ep_name = sess->GetSessionOptions().config_options.GetConfigEntry("test.ep_to_select");
+  if (auto_select_ep_name) {
+    ORT_API_RETURN_IF_STATUS_NOT_OK(AutoSelectEPs(env->GetEnvironment(), *sess, *auto_select_ep_name));
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
@@ -259,7 +186,7 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
   std::vector<std::unique_ptr<IExecutionProvider>> provider_list;
   if (options) {
     for (auto& factory : options->provider_factories) {
-      auto provider = factory->CreateProvider(*options, *reinterpret_cast<const OrtLogger*>(session_logger));
+      auto provider = factory->CreateProvider(*options, *session_logger->ToExternal());
       provider_list.push_back(std::move(provider));
     }
   }

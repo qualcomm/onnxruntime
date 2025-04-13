@@ -3,50 +3,12 @@
 
 #include "core/session/internal_ep_factory.h"
 
-// #include "core/session/abi_devices.h"
 #include "core/session/abi_session_options_impl.h"
-// #include "core/session/ep_api.h"
-
+#include "core/session/ep_api_utils.h"
 
 namespace onnxruntime {
-namespace {
-struct Forward {
-  //
-  // InternalEpFactory
-  ///
-  static const char* GetFactoryName(const OrtEpApi::OrtEpFactory* this_ptr) {
-    return static_cast<const InternalEpFactory*>(this_ptr)->GetName();
-  }
 
-  static const char* GetVendor(const OrtEpApi::OrtEpFactory* this_ptr) {
-    return static_cast<const InternalEpFactory*>(this_ptr)->GetVendor();
-  }
-
-  static bool GetDeviceInfoIfSupported(const OrtEpApi::OrtEpFactory* this_ptr,
-                                       const OrtHardwareDevice* device,
-                                       OrtKeyValuePairs** ep_device_metadata,
-                                       OrtKeyValuePairs** ep_options_for_device) {
-    return static_cast<const InternalEpFactory*>(this_ptr)->GetDeviceInfoIfSupported(device, ep_device_metadata,
-                                                                                     ep_options_for_device);
-  }
-
-  static OrtStatus* CreateEp(OrtEpApi::OrtEpFactory* this_ptr,
-                             const OrtHardwareDevice* const* devices,
-                             const OrtKeyValuePairs* const* ep_metadata_pairs,
-                             size_t num_devices,
-                             const OrtSessionOptions* session_options,
-                             const OrtLogger* logger,
-                             OrtEpApi::OrtEp** ep) {
-    return static_cast<InternalEpFactory*>(this_ptr)->CreateEp(devices, ep_metadata_pairs, num_devices,
-                                                               session_options, logger, ep);
-  }
-
-  static void ReleaseEp(OrtEpApi::OrtEpFactory* this_ptr, OrtEpApi::OrtEp* ep) {
-    static_cast<InternalEpFactory*>(this_ptr)->ReleaseEp(ep);
-  }
-};
-
-}  // namespace
+using Forward = ForwardToFactory<InternalEpFactory>;
 
 InternalEpFactory::InternalEpFactory(const std::string& ep_name, const std::string& vendor,
                                      IsSupportedFunc&& is_supported_func,
@@ -83,14 +45,14 @@ OrtStatus* InternalEpFactory::CreateEp(const OrtHardwareDevice* const* /*devices
 OrtStatus* InternalEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
                                                        const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
                                                        size_t /*num_devices*/,
-                                                       const OrtSessionOptions* api_session_options,
-                                                       const OrtLogger* api_logger,
+                                                       const OrtSessionOptions* session_options,
+                                                       const OrtLogger* session_logger,
                                                        std::shared_ptr<IExecutionProvider>& ep) {
   // convert API types to internals
-  const SessionOptions& session_options = api_session_options->value;
-  const auto& logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(api_logger);
+  // const SessionOptions& session_options = api_session_options->value;
+  // const auto& logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(api_logger);
 
-  ep = create_func_(session_options, logger);
+  ep = create_func_(*session_options, *session_logger);
 
   return nullptr;
 }
