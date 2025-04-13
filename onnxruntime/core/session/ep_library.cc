@@ -28,7 +28,9 @@
 
 namespace onnxruntime {
 namespace {
-std::unique_ptr<ProviderBridgeEpFactory> CreateCudaEpFactory(Provider& provider) {
+std::unique_ptr<InternalEpFactory> CreateCudaEpFactory(Provider& provider) {
+  static const std::string ep_name = kCudaExecutionProvider;  // must be static to be valid for the lambdas
+
   const auto is_supported = [](const OrtHardwareDevice* device,
                                OrtKeyValuePairs** /*ep_metadata*/,
                                OrtKeyValuePairs** /*ep_options*/) -> bool {
@@ -42,14 +44,25 @@ std::unique_ptr<ProviderBridgeEpFactory> CreateCudaEpFactory(Provider& provider)
 
   const auto create_cuda_ep = [&provider](const OrtSessionOptions& session_options, const OrtLogger& session_logger) {
     OrtCUDAProviderOptionsV2 options;
-    provider.UpdateProviderOptions(&options, session_options.value.config_options.configurations);
+
+    // create provider_options with 'ep.<ep_name>' removed
+    // TODO: Shouldn't need to do this manually for all EPs.
+    std::unordered_map<std::string, std::string> provider_options;
+    const std::string ep_prefix = "ep." + ep_name + ".";
+    const size_t ep_prefix_length = ep_prefix.length();
+    for (const auto& entry : session_options.value.config_options.configurations) {
+      if (entry.first.find(ep_prefix) == 0) {
+        provider_options[entry.first.substr(ep_prefix_length)] = entry.second;
+      }
+    }
+
+    provider.UpdateProviderOptions(&options, provider_options);
     auto ep_factory = provider.CreateExecutionProviderFactory(&options);
     auto ep = ep_factory->CreateProvider(session_options, session_logger);
     return ep;
   };
 
-  std::string ep_name = kCudaExecutionProvider;
-  auto factory = std::make_unique<ProviderBridgeEpFactory>(ep_name, "Microsoft", is_supported, create_cuda_ep);
+  auto factory = std::make_unique<InternalEpFactory>(ep_name, "Microsoft", is_supported, create_cuda_ep);
   return factory;
 }
 }  // namespace
@@ -57,12 +70,14 @@ std::unique_ptr<ProviderBridgeEpFactory> CreateCudaEpFactory(Provider& provider)
 Status EpLibraryProviderBridge::Load() {
   auto& provider = provider_library_.Get();
   // Ideally the selection and creation funcs would come from Provider.
-  // Start with local hardcoding for now. The set of EPs to support is constrained and it's an interim approach.
-  // The matching on filename is fragile, but similar to what we do to load provider bridge EPs anyway.
-  // Use the same library name to make it somewhat less fragile.
+  // Start with local hardcoding for now. The set of EPs to support is constrained and it's a short term approach.
+  // The matching on filename is fragile, but similar to what we do to load provider bridge EPs.
   // See https://github.com/microsoft/onnxruntime/blob/90c263f471bbce724e77d8e62831d3a9fa838b2f/onnxruntime/core/session/provider_bridge_ort.cc#L1782-L1815
   if (library_path_.filename().string().find("onnxruntime_providers_cuda") != std::string::npos) {
-    factories_.push_back(CreateCudaEpFactory(provider));
+    auto ep_factory = CreateCudaEpFactory(provider);
+    factory_ptrs_.push_back(ep_factory.get());
+    internal_factory_ptrs_.push_back(ep_factory.get());
+    factories_.push_back(std::move(ep_factory));
   } else {
     ORT_NOT_IMPLEMENTED(
         "Execution provider library is not supported: ", library_path_);

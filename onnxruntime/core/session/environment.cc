@@ -334,28 +334,35 @@ Internal copy node
   return status;
 }
 
-Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
+Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info,
+                                                 const std::unordered_map<std::string, std::string>& options,
+                                                 const OrtArenaCfg* arena_cfg) {
   if (provider_type == onnxruntime::kCpuExecutionProvider) {
     ORT_UNUSED_PARAMETER(options);
     return CreateAndRegisterAllocator(mem_info, arena_cfg);
   }
+
 #ifdef USE_CUDA
   if (provider_type == onnxruntime::kCudaExecutionProvider) {
     CUDAExecutionProviderInfo cuda_ep_info;
     GetProviderInfo_CUDA().CUDAExecutionProviderInfo__FromProviderOptions(options, cuda_ep_info);
     CUDAExecutionProviderExternalAllocatorInfo external_info = cuda_ep_info.external_allocator_info;
-    AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCudaAllocator(static_cast<int16_t>(mem_info.device.Id()), arena_cfg->max_mem, static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy),
-                                                                            external_info, arena_cfg);
+    AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCudaAllocator(
+        static_cast<int16_t>(mem_info.device.Id()),
+        arena_cfg->max_mem,
+        static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy),
+        external_info, arena_cfg);
     return RegisterAllocator(allocator_ptr);
   }
 #endif
+
   return Status{ONNXRUNTIME, common::INVALID_ARGUMENT,
                 provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
 }
 
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
                                                      std::unique_ptr<EpLibrary> ep_library,
-                                                     InternalEpFactory* internal_factory) {
+                                                     const std::vector<InternalEpFactory*>& internal_factories) {
   if (ep_libraries_.count(registration_name) > 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
   }
@@ -371,7 +378,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
       execution_devices_.insert(ed.get());
     }
 
-    if (internal_factory) {
+    for (const auto& internal_factory : internal_factories) {
       internal_ep_factories_.insert(internal_factory);
     }
 
@@ -389,20 +396,29 @@ Status Environment::CreateAndRegisterInternalEps() {
   auto internal_ep_libraries = InternalEpLibraryCreator::CreateInternalEps();
   for (auto& ep_library : internal_ep_libraries) {
     // we do a std::move in the function call so need a valid pointer for the args after the move
-    auto* ep_library_ptr = ep_library.get();
-    ORT_RETURN_IF_ERROR(RegisterExecutionProviderLibrary(ep_library_ptr->RegistrationName(),
+    auto* internal_library_ptr = ep_library.get();
+    ORT_RETURN_IF_ERROR(RegisterExecutionProviderLibrary(internal_library_ptr->RegistrationName(),
                                                          std::move(ep_library),
-                                                         &ep_library_ptr->GetInternalFactory()));
+                                                         {&internal_library_ptr->GetInternalFactory()}));
   }
 
   return Status::OK();
 }
 
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path) {
-  // load the library
-  std::unique_ptr<EpLibrary> ep_library = std::make_unique<EpLibraryPlugin>(registration_name, lib_path);
-
-  return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library));
+  // need to special case provider bridge EPs. using the current EP name.
+  if (registration_name == kCudaExecutionProvider) {
+    auto ep_library = std::make_unique<EpLibraryProviderBridge>(registration_name, lib_path);
+    // we do a std::move in the function call so need a valid pointer for the args after the move
+    auto* internal_library_ptr = ep_library.get();
+    return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library),
+                                            internal_library_ptr->GetInternalFactories());
+  } else {
+    // FUTURE: Plugin EP load goes here once the OrtEp API is finalized.
+    // load the library
+    // std::unique_ptr<EpLibrary> ep_library = std::make_unique<EpLibraryPlugin>(registration_name, lib_path);
+    ORT_NOT_IMPLEMENTED("Plugin execution provider library supported is not finalized: ", registration_name);
+  }
 }
 
 Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_name) {
@@ -416,8 +432,9 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
 
     // remove from map and global list of OrtExecutionDevice* before unloading so we don't get a leftover entry.
     ep_libraries_.erase(ep_name);
-    if (ep_info->internal_factory) {
-      internal_ep_factories_.erase(ep_info->internal_factory);
+
+    for (auto* internal_factory : ep_info->internal_factories) {
+      internal_ep_factories_.erase(internal_factory);
     }
 
     for (const auto& ed : ep_info->execution_devices) {
@@ -435,7 +452,7 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
 Environment::~Environment() = default;
 
 Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
-                                   InternalEpFactory* internal_factory) {
+                                   const std::vector<InternalEpFactory*>& internal_factories) {
   if (!library_in) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EpLibrary was null");
   }
@@ -443,7 +460,7 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
   out.reset(new EpInfo());  // can't use make_unique with private ctor
   EpInfo& instance = *out;
   instance.library = std::move(library_in);
-  instance.internal_factory = internal_factory;
+  instance.internal_factories = internal_factories;
 
   ORT_RETURN_IF_ERROR(instance.library->Load());
   const auto& factories = instance.library->GetFactories();

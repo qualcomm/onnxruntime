@@ -46,15 +46,11 @@ Status AutoSelectEPs(const Environment& env, InferenceSession& sess, const std::
       continue;
     }
 
-    InternalEpFactory* internal_factory = nullptr;
-    if (device->ep_name == kCpuExecutionProvider) {
-      if (ep_to_select == kCpuExecutionProvider) {
-        internal_factory = env.GetInternalEpFactory(device->ep_factory);
-      }
-    } else if (device->ep_name == kDmlExecutionProvider) {
-    }
+    // get internal factory if available
+    InternalEpFactory* internal_factory = env.GetInternalEpFactory(device->ep_factory);
 
     // in the real implementation multiple devices can be assigned to an EP
+    // in our current test-able setup it's 1:1
     std::vector<const OrtHardwareDevice*> devices{device->device};
     std::vector<const OrtKeyValuePairs*> ep_metadata{&device->ep_metadata};
 

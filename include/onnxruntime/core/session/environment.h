@@ -132,7 +132,7 @@ class Environment {
 
   Status RegisterExecutionProviderLibrary(const std::string& registration_name,
                                           std::unique_ptr<EpLibrary> ep_library,
-                                          InternalEpFactory* internal_factory = nullptr);
+                                          const std::vector<InternalEpFactory*>& internal_factories = {});
 
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
@@ -145,12 +145,7 @@ class Environment {
     // for each factory gets the OrtExecutionDevice instances and adds to execution_devices
     // internal_factory is set if this is an internal EP
     static Status Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
-                         InternalEpFactory* internal_factory = nullptr);
-
-    // OrtEpApi::OrtEpFactory& GetFactory() {
-    //   // Load must have been successful to get to here so this will should always be valid
-    //   return *library->GetFactory();
-    // }
+                         const std::vector<InternalEpFactory*>& internal_factories = {});
 
     // removes entries for this library from execution_devices
     // calls EpLibrary::Unload
@@ -158,7 +153,8 @@ class Environment {
 
     std::unique_ptr<EpLibrary> library;
     std::vector<std::unique_ptr<OrtExecutionDevice>> execution_devices;
-    InternalEpFactory* internal_factory{nullptr};  // used to populate/cleanup internal_ep_factories_
+    std::vector<InternalEpFactory*> internal_factories;  // factories that provide IExecutionProvider directly
+
    private:
     EpInfo() = default;
   };

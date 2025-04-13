@@ -60,6 +60,12 @@ struct EpLibraryProviderBridge : EpLibrary {
     return factory_ptrs_;
   }
 
+  // Provider bridge EPs are 'internal' as they can provide an IExecutionProvider instance directly
+  // there's only ever one currently
+  const std::vector<InternalEpFactory*>& GetInternalFactories() {
+    return internal_factory_ptrs_;
+  }
+
   Status Load() override;
   Status Unload() override;
 
@@ -69,8 +75,9 @@ struct EpLibraryProviderBridge : EpLibrary {
   std::string registration_name_;
   std::filesystem::path library_path_;
   ProviderLibrary provider_library_;  // handles onnxruntime_providers_shared and the provider bridge EP library
-  std::vector<std::unique_ptr<ProviderBridgeEpFactory>> factories_;
-  std::vector<OrtEpApi::OrtEpFactory*> factory_ptrs_;  // for convenience
+  std::vector<std::unique_ptr<InternalEpFactory>> factories_;
+  std::vector<OrtEpApi::OrtEpFactory*> factory_ptrs_;      // for convenience
+  std::vector<InternalEpFactory*> internal_factory_ptrs_;  // for convenience
 };
 
 struct EpLibraryPlugin : EpLibrary {
