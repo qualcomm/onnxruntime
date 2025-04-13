@@ -1,4 +1,4 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 // See docs\c_cxx\README.md on generating the Doxygen documentation from this file
@@ -311,6 +311,9 @@ ORT_RUNTIME_CLASS(Node);
 ORT_RUNTIME_CLASS(Graph);
 ORT_RUNTIME_CLASS(Model);
 ORT_RUNTIME_CLASS(ModelCompilationOptions);
+ORT_RUNTIME_CLASS(HardwareDevice);
+ORT_RUNTIME_CLASS(ExecutionDevice);
+ORT_RUNTIME_CLASS(KeyValuePairs);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -401,6 +404,24 @@ typedef enum OrtMemoryInfoDeviceType {
   OrtMemoryInfoDeviceType_GPU = 1,
   OrtMemoryInfoDeviceType_FPGA = 2
 } OrtMemoryInfoDeviceType;
+
+typedef enum OrtHardwareDeviceType {
+  OrtHardwareDeviceType_CPU,
+  OrtHardwareDeviceType_GPU,
+  OrtHardwareDeviceType_NPU
+} OrtHardwareDeviceType;
+
+/** \brief These are the default EP selection policies used by ORT when doing automatic EP selection.
+ */
+typedef enum OrtExecutionProviderDevicePolicy {
+  OrtExecutionProviderDevicePolicy_DEFAULT,
+  OrtExecutionProviderDevicePolicy_PREFER_CPU,
+  OrtExecutionProviderDevicePolicy_PREFER_NPU,
+  OrtExecutionProviderDevicePolicy_PREFER_GPU,
+  OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE,
+  OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY,
+  OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER,
+} OrtExecutionProviderDevicePolicy;
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -676,6 +697,9 @@ typedef struct OrtModelEditorApi OrtModelEditorApi;
 
 struct OrtCompileApi;
 typedef struct OrtCompileApi OrtCompileApi;
+
+struct OrtEpApi;
+typedef struct OrtEpApi OrtEpApi;
 
 /** \brief The helper interface to get the right version of OrtApi
  *
@@ -4923,6 +4947,40 @@ struct OrtApi {
                   _In_ bool cancel);
 
   const OrtCompileApi*(ORT_API_CALL* GetCompileApi)();
+
+  // Making OrtKeyValuePairs opaque so we can control whether the keys/values need to be freed better.
+  void(ORT_API_CALL* CreateKeyValuePairs)(_Outptr_ OrtKeyValuePairs** out);
+  // add pair. values will be copied to guarantee lifetime
+  void(ORT_API_CALL* AddKeyValuePair)(_In_ OrtKeyValuePairs* kvps, _In_ const char* key, _In_ const char* value);
+  const char*(ORT_API_CALL* GetKeyValuePair)(_In_ OrtKeyValuePairs* kvps, _In_ const char* key);
+  void(ORT_API_CALL* GetKeyValuePairs)(_In_ OrtKeyValuePairs* kvps,
+                                       _Outptr_ const char** keys, _Outptr_ const char** values,
+                                       _Out_ size_t* num_entries);
+
+  void(ORT_API_CALL* RemoveKeyValuePair)(_In_ OrtKeyValuePairs* kvps, _In_ const char* key);
+  ORT_CLASS_RELEASE(KeyValuePairs);
+
+  //
+  // Plugin Execution Provider API
+  //
+  // Sadly there's already a GetExecutionProviderApi function... so use 'Ep' to match all the other naming in OrtEpApi
+  const OrtEpApi*(ORT_API_CALL* GetEpApi)();
+
+  /** \brief: Append execution provider to the session options.
+   * \param[in] options Session options to add execution provider to.
+   * \param[in] env Environment that execution providers must be registered with.
+                    Internal EPs are automatically registered.
+                    External EPs should use OrtEpApi functionality be registered.
+   * \param[in] ep_name Execution provider to add.
+   * \param[in] provider_options_keys - keys to configure the provider options
+   * \param[in] provider_options_values - values to configure the provider options
+   * \param[in] num_keys - number of keys passed in
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* sess_options,
+                  _In_ OrtEnv* env, _In_ const char* ep_name,
+                  _In_reads_(num_op_options) const char* const* ep_option_keys,
+                  _In_reads_(num_op_options) const char* const* ep_option_vals,
+                  size_t num_ep_options);
 };
 
 /*
@@ -5592,6 +5650,123 @@ struct OrtCompileApi {
   ORT_API2_STATUS(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
 #endif
 };
+
+struct OrtEpApi {
+  struct OrtEp {
+    // Must be initialized to ORT_API_VERSION implementation was compiled with.
+    // ORT will use this to ensure it does not attempt to use functionality that was not available at the time.
+    uint32_t ort_version_supported;
+
+    // need this for partitioning as nodes are assigned using the EP name
+    // equivalent to IExecutionProvider::Type but 'name'
+    const char*(ORT_API_CALL* GetName)(const OrtEp* this_ptr);
+
+    // Get internal ORT EP implementation (IExecutionProvider) if available so we can execute internal EPs using
+    // existing code.
+    // TODO: Is void* fine or do we need/want to create an opaque API type for this?
+    // return nullptr if not an internal EP.
+    //
+    // Alternative: back-channel registration with the Environment when created.
+    // Could add to unordered_map<OrtEp*, IExecutionProvider*> so we simply lookup there to get the internal EP.
+    // Trying that out as it feels cleaner by not polluting this API
+    // void* GetOrtInternalEp(OrtEp* this_ptr);
+
+    // Plugin API TBD.
+    // OrtStatus* GetCapability(OrtEp* ep, const OrtGraph* graph,
+    //                          size_t* num_supported_subgraphs,
+    //                          OrtIndexedSubgraph** supported_subgraphs, OrtAllocator* allocator);
+
+    // OrtStatus* Compile(OrtEp* ep, const OrtGraph** graphs, OrtNode** fused_graph_nodes,
+    //                    size_t count, OrtNodeComputeInfo* node_compute_infos);
+
+    //  Many other functions!
+  };
+
+  struct OrtEpFactory {
+    // Must be initialized to ORT_API_VERSION implementation was compiled with.
+    // ORT will use this to ensure it does not attempt to use functionality that was not available at the time.
+    uint32_t ort_version_supported;
+
+    const char*(ORT_API_CALL* GetName)(const OrtEpFactory* this_ptr);    // return name EP was registered with
+    const char*(ORT_API_CALL* GetVendor)(const OrtEpFactory* this_ptr);  // return EP vendor
+
+    bool(ORT_API_CALL* GetDeviceInfoIfSupported)(const OrtEpFactory* this_ptr,
+                                                 _In_ const OrtHardwareDevice* device,
+                                                 _Out_opt_ OrtKeyValuePairs** ep_metadata,
+                                                 _Out_opt_ OrtKeyValuePairs** ep_options);
+
+    // Function to create an EP instance for use in a session.
+    //
+    //   registered_name is the value provided in RegisterExecutionProviderLibrary
+    //     Any configuration values for the EP should be in OrtSessionOptions.config_options which can be retrieved
+    //     with OrtEpApi::SessionOptionsConfigOptions and will have the prefix 'ep.<registered_name>.'
+    //   devices/ep_metadata_pairs is the info for selected devices returned by GetDeviceInfoIfSupported
+    //     - an EP could be selected for multiple devices if the factory indicated it supported multiple
+    //       - i.e factory returned true for multiple calls to GetDeviceInfoIfSupported
+    //   session_options so implementation can read config key/value pairs from OrtSessionOptions and any other
+    //     relevant values.
+    //     the ep_options returned by GetDeviceInfoIfSupported should have been added here for consistency as any
+    //     user provided values/overrides will be in the SessionOptions
+    //     with a prefix 'ep.<ep name>.'
+    //     - NOTE: This is generic so there are no provider specific options.
+    //     Existing EPs will need to be updated to read
+    //         all their options from OrtSessionOptions.ConfigOptions.
+    //   logger is Session logger. EP instance should use for output.
+    //
+    //   ORT will take ownership and call ReleaseEp to release the OrtEp instance when it is no longer needed.
+    OrtStatus*(ORT_API_CALL* CreateEp)(_In_ OrtEpFactory* this_ptr,
+                                       _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                       _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
+                                       _In_ size_t num_devices,
+                                       _In_ const OrtSessionOptions* session_options,
+                                       _In_ const OrtLogger* logger, _Outptr_ OrtEp** ep);
+
+    // Function ORT calls to release an EP instance.
+    void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, OrtEp* ep);
+  };
+
+  // ORT will load the library and call the 'CreateEpFactory' function which should match CreateEpFactoryFn.
+  typedef OrtStatus* (*CreateEpFactoryFn)(_In_ const char* ep_name, _In_ const OrtApiBase* ort_api_base,
+                                          _Out_ OrtEpFactory** factory);
+  typedef OrtStatus* (*ReleaseEpFactoryFn)(_In_ OrtEpFactory* factory);
+  ORT_API2_STATUS(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name,
+                  _In_ const ORTCHAR_T* path);
+  // ORT will call ep_plugin->Shutdown prior to unloading the library.
+  ORT_API2_STATUS(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name);
+
+  // OrtExecutionDevice accessors
+  OrtHardwareDeviceType(ORT_API_CALL* HardwareDevice_Type)(_In_ const OrtHardwareDevice* device);
+  int32_t(ORT_API_CALL* HardwareDevice_VendorId)(_In_ const OrtHardwareDevice* device);
+  const char*(ORT_API_CALL* HardwareDevice_Vendor)(_In_ const OrtHardwareDevice* device);
+  int32_t(ORT_API_CALL* HardwareDevice_BusId)(_In_ const OrtHardwareDevice* device);
+  const OrtKeyValuePairs*(ORT_API_CALL* HardwareDevice_Properties)(_In_ const OrtHardwareDevice* device);
+
+  // const char*(ORT_API_CALL* ExecutionDevice_EpName)(_In_ const OrtExecutionDevice* device);
+  // const char*(ORT_API_CALL* ExecutionDevice_EpVendor)(_In_ const OrtExecutionDevice* device);
+  // const OrtKeyValuePairs*(ORT_API_CALL* ExecutionDevice_EpMetadata)(_In_ const OrtExecutionDevice* device);
+  // const OrtKeyValuePairs*(ORT_API_CALL* ExecutionDevice_EpOptions)(_In_ const OrtExecutionDevice* device);
+  // const OrtHardwareDevice*(ORT_API_CALL* ExecutionDevice_Device)(_In_ const OrtExecutionDevice* device);
+
+  //
+  // OrtSessionOptions accessors
+  //
+
+  // Get ConfigOptions.
+  // User must call ReleaseKeyValuePairs to release the returned OrtKeyValuePairs instance.
+  // TODO: Is there any value to being able to filter to EP specific options with a prefix like 'ep.<epname>.'?
+  ORT_API2_STATUS(SessionOptionsConfigOptions, _In_ const OrtSessionOptions* session_options,
+                  _Out_ OrtKeyValuePairs** options);
+
+  // Get ConfigOptions by key. Returns null if key not found (vs pointer to empty string if found).
+  const char*(ORT_API_CALL* SessionOptionsConfigOption)(_In_ const OrtSessionOptions* so, _In_ const char* key);
+
+  // other session options we may need to provide accessor for
+  // Get graph_optimization_level
+  // - EPs will implement optimizers so need to be aware of this
+  // Get use_deterministic_compute
+  // Get custom thread create func/join func/options
+};
+
 /*
  * This is the old way to add the CUDA provider to the session, please use SessionOptionsAppendExecutionProvider_CUDA above to access the latest functionality
  * This function always exists, but will only succeed if Onnxruntime was built with CUDA support and the CUDA provider shared library exists

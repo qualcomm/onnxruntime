@@ -2396,6 +2396,45 @@ ORT_API(const OrtCompileApi*, OrtApis::GetCompileApi) {
   fprintf(stderr, "The Compile API is not supported in a minimal build.\n");
   return nullptr;
 #endif
+
+ORT_API(void, OrtApis::CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out) {
+  auto kvps = std::make_unique<OrtKeyValuePairs>();
+  *out = reinterpret_cast<OrtKeyValuePairs*>(kvps.release());
+}
+
+ORT_API(void, OrtApis::AddKeyValuePair, _In_ OrtKeyValuePairs* kvps,
+        _In_ const char* key, _In_ const char* value) {
+  auto& entries = *reinterpret_cast<OrtKeyValuePairs*>(kvps);
+  entries.Add(key, value);
+}
+
+ORT_API(const char*, OrtApis::GetKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key) {
+  const char* value = nullptr;
+
+  if (auto entry = kvps->entries.find(key); entry != kvps->entries.end()) {
+    value = entry->second.c_str();
+  }
+
+  return value;
+}
+
+ORT_API(void, OrtApis::GetKeyValuePairs, _In_ OrtKeyValuePairs* kvps,
+        _Outptr_ const char** keys, _Outptr_ const char** values, _Out_ size_t* num_entries) {
+  keys = kvps->keys.data();
+  values = kvps->values.data();
+  *num_entries = kvps->entries.size();
+}
+
+ORT_API(void, OrtApis::RemoveKeyValuePair, _Frees_ptr_opt_ OrtKeyValuePairs* kvps, _In_ const char* key) {
+  kvps->Remove(key);
+}
+
+ORT_API(void, OrtApis::ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs* kvps) {
+  delete kvps;
+}
+
+ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
+  return OrtExecutionProviderApi::GetEpApi();
 }
 
 static constexpr OrtApiBase ort_api_base = {
@@ -2798,6 +2837,16 @@ static constexpr OrtApi ort_api_1_to_22 = {
     &OrtApis::CreateTensorWithDataAndDeleterAsOrtValue,
     &OrtApis::SessionOptionsSetLoadCancellationFlag,
     &OrtApis::GetCompileApi,
+
+    &OrtApis::CreateKeyValuePairs,
+    &OrtApis::AddKeyValuePair,
+    &OrtApis::GetKeyValuePair,
+    &OrtApis::GetKeyValuePairs,
+    &OrtApis::RemoveKeyValuePair,
+    &OrtApis::ReleaseKeyValuePairs,
+
+    &OrtApis::GetEpApi,
+    &OrtApis::SessionOptionsAppendExecutionProvider_V2,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

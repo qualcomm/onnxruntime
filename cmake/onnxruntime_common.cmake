@@ -11,6 +11,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/common/logging/*.cc"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
@@ -223,4 +225,9 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+if(WIN32)
+  # ??? is this safe on all windows variants?
+  target_link_libraries(onnxruntime_common PRIVATE dxcore.lib)
 endif()

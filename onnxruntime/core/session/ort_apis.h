@@ -553,4 +553,20 @@ ORT_API_STATUS_IMPL(SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOpt
                     _In_ bool is_cancel);
 
 ORT_API(const OrtCompileApi*, GetCompileApi);
+
+ORT_API(void, CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out);
+ORT_API(void, AddKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key, _In_ const char* value);
+ORT_API(const char*, GetKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key);
+ORT_API(void, GetKeyValuePairs, _In_ OrtKeyValuePairs* kvps,
+        _Outptr_ const char** keys, _Outptr_ const char** values, _Out_ size_t* num_entries);
+ORT_API(void, RemoveKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key);
+ORT_API(void, ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs*);
+
+ORT_API(const OrtEpApi*, GetEpApi);
+
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* sess_options,
+                    _In_ OrtEnv* env, _In_ const char* ep_name,
+                    _In_reads_(num_op_options) const char* const* ep_option_keys,
+                    _In_reads_(num_op_options) const char* const* ep_option_vals,
+                    size_t num_ep_options);
 }  // namespace OrtApis
