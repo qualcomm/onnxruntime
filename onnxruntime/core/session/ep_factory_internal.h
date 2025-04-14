@@ -11,7 +11,7 @@ namespace onnxruntime {
 struct EpLibraryInternal;
 struct SessionOptions;
 
-class InternalEpFactory : public OrtEpApi::OrtEpFactory {
+class EpFactoryInternal : public OrtEpApi::OrtEpFactory {
  public:
   using IsSupportedFunc = std::function<bool(const OrtHardwareDevice* device,
                                              OrtKeyValuePairs** ep_metadata,
@@ -19,7 +19,7 @@ class InternalEpFactory : public OrtEpApi::OrtEpFactory {
 
   using CreateFunc = std::function<std::unique_ptr<IExecutionProvider>(const OrtSessionOptions& session_options,
                                                                        const OrtLogger& session_logger)>;
-  InternalEpFactory(const std::string& ep_name, const std::string& vendor,
+  EpFactoryInternal(const std::string& ep_name, const std::string& vendor,
                     IsSupportedFunc&& is_supported_func,
                     CreateFunc&& create_func);
 
@@ -53,7 +53,7 @@ class InternalEpFactory : public OrtEpApi::OrtEpFactory {
   const IsSupportedFunc is_supported_func_;  // function to check if the device is supported
   const CreateFunc create_func_;             // function to create the EP instance
 
-  std::vector<std::unique_ptr<InternalEpFactory>> eps_;  // EP instances created by this factory
+  std::vector<std::unique_ptr<EpFactoryInternal>> eps_;  // EP instances created by this factory
 };
 
 }  // namespace onnxruntime

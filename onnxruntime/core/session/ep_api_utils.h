@@ -7,7 +7,7 @@ namespace onnxruntime {
 template <typename TFactory>
 struct ForwardToFactory {
   //
-  // InternalEpFactory
+  // EpFactoryInternal
   ///
   static const char* GetFactoryName(const OrtEpApi::OrtEpFactory* this_ptr) {
     return static_cast<const TFactory*>(this_ptr)->GetName();

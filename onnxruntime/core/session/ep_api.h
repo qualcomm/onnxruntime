@@ -7,7 +7,7 @@
 #include <mutex>
 
 #include "core/common/common.h"
-#include "core/session/internal_ep_factory.h"
+#include "core/session/ep_factory_internal.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace OrtExecutionProviderApi {

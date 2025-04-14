@@ -11,7 +11,10 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/inference_session.h"
-#include "core/session/internal_ep_factory.h"
+#include "core/session/ep_factory_internal.h"
+#include "core/session/ep_library_internal.h"
+#include "core/session/ep_library_plugin.h"
+#include "core/session/ep_library_provider_bridge.h"
 #include "core/session/ort_apis.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -362,7 +365,7 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
                                                      std::unique_ptr<EpLibrary> ep_library,
-                                                     const std::vector<InternalEpFactory*>& internal_factories) {
+                                                     const std::vector<EpFactoryInternal*>& internal_factories) {
   if (ep_libraries_.count(registration_name) > 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
   }
@@ -393,7 +396,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
 }
 
 Status Environment::CreateAndRegisterInternalEps() {
-  auto internal_ep_libraries = InternalEpLibraryCreator::CreateInternalEps();
+  auto internal_ep_libraries = EpLibraryInternal::CreateInternalEps();
   for (auto& ep_library : internal_ep_libraries) {
     // we do a std::move in the function call so need a valid pointer for the args after the move
     auto* internal_library_ptr = ep_library.get();
@@ -456,7 +459,7 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
 Environment::~Environment() = default;
 
 Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
-                                   const std::vector<InternalEpFactory*>& internal_factories) {
+                                   const std::vector<EpFactoryInternal*>& internal_factories) {
   if (!library_in) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EpLibrary was null");
   }

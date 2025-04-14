@@ -44,7 +44,7 @@ ORT_API_STATUS_IMPL(GetEpDevices, _In_ const OrtEnv* env,
 
 struct ExecutionProviderFactory : public IExecutionProviderFactory {
  public:
-  ExecutionProviderFactory(InternalEpFactory& ep_factory, std::vector<const OrtEpDevice*> ep_devices)
+  ExecutionProviderFactory(EpFactoryInternal& ep_factory, std::vector<const OrtEpDevice*> ep_devices)
       : ep_factory_{ep_factory} {
     devices_.reserve(ep_devices.size());
     ep_metadata_.reserve(ep_devices.size());
@@ -72,7 +72,7 @@ struct ExecutionProviderFactory : public IExecutionProviderFactory {
   }
 
  private:
-  InternalEpFactory& ep_factory_;
+  EpFactoryInternal& ep_factory_;
   std::vector<const OrtHardwareDevice*> devices_;
   std::vector<const OrtKeyValuePairs*> ep_metadata_;
 };
@@ -87,10 +87,10 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOpt
   std::string ep_name{ep_name_in};
   std::vector<const OrtEpDevice*> ep_devices;
 
-  InternalEpFactory* internal_factory = nullptr;
+  EpFactoryInternal* internal_factory = nullptr;
   for (const auto& entry : execution_devices) {
     if (entry->ep_name == ep_name) {
-      internal_factory = env->GetEnvironment().GetInternalEpFactory(entry->ep_factory);
+      internal_factory = env->GetEnvironment().GetEpFactoryInternal(entry->ep_factory);
       if (!internal_factory) {
         return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "EP is not currently supported by this API");
       }

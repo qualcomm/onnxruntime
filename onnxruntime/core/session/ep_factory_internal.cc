@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/internal_ep_factory.h"
+#include "core/session/ep_factory_internal.h"
 
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ep_api_utils.h"
@@ -9,9 +9,9 @@
 
 namespace onnxruntime {
 
-using Forward = ForwardToFactory<InternalEpFactory>;
+using Forward = ForwardToFactory<EpFactoryInternal>;
 
-InternalEpFactory::InternalEpFactory(const std::string& ep_name, const std::string& vendor,
+EpFactoryInternal::EpFactoryInternal(const std::string& ep_name, const std::string& vendor,
                                      IsSupportedFunc&& is_supported_func,
                                      CreateFunc&& create_func)
     : ep_name_{ep_name},
@@ -28,22 +28,22 @@ InternalEpFactory::InternalEpFactory(const std::string& ep_name, const std::stri
   OrtEpFactory::ReleaseEp = Forward::ReleaseEp;
 }
 
-bool InternalEpFactory::GetDeviceInfoIfSupported(const OrtHardwareDevice* device,
+bool EpFactoryInternal::GetDeviceInfoIfSupported(const OrtHardwareDevice* device,
                                                  OrtKeyValuePairs** ep_device_metadata,
                                                  OrtKeyValuePairs** ep_options_for_device) const {
   return is_supported_func_(device, ep_device_metadata, ep_options_for_device);
 }
 
-OrtStatus* InternalEpFactory::CreateEp(const OrtHardwareDevice* const* /*devices*/,
+OrtStatus* EpFactoryInternal::CreateEp(const OrtHardwareDevice* const* /*devices*/,
                                        const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
                                        size_t /*num_devices*/,
                                        const OrtSessionOptions* /*api_session_options*/,
                                        const OrtLogger* /*api_logger*/,
                                        OrtEpApi::OrtEp** /*ep*/) {
-  ORT_THROW("Internal error. CreateIExecutionProvider should be used for InternalEpFactory.");
+  ORT_THROW("Internal error. CreateIExecutionProvider should be used for EpFactoryInternal.");
 }
 
-OrtStatus* InternalEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
+OrtStatus* EpFactoryInternal::CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
                                                        const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
                                                        size_t num_devices,
                                                        const OrtSessionOptions* session_options,
@@ -51,15 +51,15 @@ OrtStatus* InternalEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* 
                                                        std::unique_ptr<IExecutionProvider>& ep) {
   if (num_devices != 1) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "InternalEpFactory only supports one device at a time.");
+                                 "EpFactoryInternal only supports one device at a time.");
   }
   ep = create_func_(*session_options, *session_logger);
 
   return nullptr;
 }
 
-void InternalEpFactory::ReleaseEp(OrtEpApi::OrtEp* /*ep*/) {
+void EpFactoryInternal::ReleaseEp(OrtEpApi::OrtEp* /*ep*/) {
   // we never create an OrtEp so we should never be trying to release one
-  ORT_THROW("Internal error. No ReleaseEp call is required for InternalEpFactory.");
+  ORT_THROW("Internal error. No ReleaseEp call is required for EpFactoryInternal.");
 }
 }  // namespace onnxruntime

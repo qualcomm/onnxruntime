@@ -10,7 +10,7 @@
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
-#include "core/session/internal_ep_factory.h"
+#include "core/session/ep_factory_internal.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
@@ -38,7 +38,7 @@ Status AutoSelectEPs(const Environment& env, InferenceSession& sess, const std::
     }
 
     // get internal factory if available
-    InternalEpFactory* internal_factory = env.GetInternalEpFactory(ep_device->ep_factory);
+    EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_device->ep_factory);
 
     // in the real implementation multiple devices can be assigned to an EP
     // in our current test-able setup it's 1:1
