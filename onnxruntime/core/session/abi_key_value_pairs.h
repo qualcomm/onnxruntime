@@ -26,12 +26,12 @@ struct OrtKeyValuePairs {
       keys.push_back(entry.first.c_str());
       values.push_back(entry.second.c_str());
     } else {
-      // rebuild is easier and this is not expected to be a common case. otherwise we need to to strcmp on all entries.
+      // rebuild is easier and this is not expected to be a common case.
       Sync();
     }
   }
 
-  // we don't expect this to be common. reconsider using std::vector or call Sync if it turns out to be.
+  // we don't expect this to be common. reconsider using std::vector if it turns out to be.
   void Remove(const char* key) {
     auto iter = entries.find(key);
     if (iter != entries.end()) {
