@@ -9,7 +9,8 @@
 #include "core/session/onnxruntime_cxx_api.h"
 
 #include "test_allocator.h"
-#include "utils.h"
+#include "test/shared_lib/utils.h"
+#include "test/util/include/asserts.h"
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -29,7 +30,6 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 
   // manually specify EP to select for now
   Ort::GetApi().AddSessionConfigEntry(session_options, "test.ep_to_select", ep_to_select.c_str());
-  // Ort::GetApi().SessionOptionsSetEpSelectionPolicy(session_options, policy, nullptr);
 
   if (library_path) {
     // use EP name as registration name for now. there's some hardcoded matching of names to special case
@@ -84,7 +84,7 @@ TEST(AutoEpSelection, CudaEP) {
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
   TestInference<float>(*ort_env, ORT_TSTR("testdata/mul_1.onnx"),
-                       std::string(kCudaExecutionProvider), "onnxruntime_providers_cuda",
+                       "CUDA", "onnxruntime_providers_cuda",
                        inputs, "Y", expected_dims_y, expected_values_y);
 }
 #endif
@@ -101,7 +101,7 @@ TEST(AutoEpSelection, DmlEP) {
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
   TestInference<float>(*ort_env, ORT_TSTR("testdata/mul_1.onnx"),
-                       std::string(kDmlExecutionProvider), std::nullopt,
+                       "DML", std::nullopt,
                        inputs, "Y", expected_dims_y, expected_values_y);
 }
 #endif
@@ -119,10 +119,39 @@ TEST(AutoEpSelection, WebGpuEP) {
   std::vector<float> expected_values_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
 
   TestInference<float>(*ort_env, ORT_TSTR("testdata/mul_1.onnx"),
-                       std::string(kWebGpuExecutionProvider), std::nullopt,
+                       "WebGPU", std::nullopt,
                        inputs, "Y", expected_dims_y, expected_values_y);
 }
 #endif
+
+TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
+  std::filesystem::path library_path = "example_plugin_ep_library.dll";
+  const std::string registration_name = "example_ep";
+
+  Ort::SessionOptions session_options;
+
+  OrtEnv* c_api_env = *ort_env;
+  const OrtApi* c_api = &Ort::GetApi();
+  // this should load the library and create OrtEpDevice
+  ASSERT_ORTSTATUS_OK(c_api, GetEpApi()->RegisterExecutionProviderLibrary(c_api_env, registration_name.c_str(),
+                                                                          library_path.c_str()));
+
+  const OrtEpDevice* const* ep_devices = nullptr;
+  size_t num_devices = 0;
+
+  ASSERT_ORTSTATUS_OK(c_api, GetEpApi()->GetEpDevices(c_api_env, &ep_devices, &num_devices));
+  // should be one device for the example EP
+  auto num_test_ep_devices = std::count_if(ep_devices, ep_devices + num_devices,
+                                           [&registration_name, &c_api](const OrtEpDevice* device) {
+                                             // the example uses the registration name for the EP name
+                                             // but that is not a requirement and the two can differ.
+                                             return c_api->GetEpApi()->EpDevice_EpName(device) == registration_name;
+                                           });
+  ASSERT_EQ(num_test_ep_devices, 1) << "Expected an OrtEpDevice to have been created by the test library.";
+
+  // and this should unload it
+  ASSERT_ORTSTATUS_OK(c_api, GetEpApi()->UnregisterExecutionProviderLibrary(c_api_env, registration_name.c_str()));
+}
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -5,6 +5,7 @@
 
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/provider_options.h"
 #include "core/framework/session_options.h"
 #include "core/providers/providers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -15,7 +16,6 @@
 #include "core/session/environment.h"
 #include "core/session/internal_ep_factory.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "core/session/provider_bridge_ep_factory.h"
 #include "core/session/ort_env.h"
 
 #if defined(USE_DML)
@@ -28,8 +28,26 @@
 
 namespace onnxruntime {
 namespace {
+// many EPs parse the options from prior to them being added to session options.
+// to support that we need to extract the EP specific options from session_options and remove the prefix.
+ProviderOptions GetOptionsFromSessionOptions(const std::string& ep_name, const SessionOptions& session_options) {
+  const std::string option_prefix = ProviderOptionsUtils::GetProviderOptionPrefix(ep_name);
+  ProviderOptions ep_options;
+
+  for (const auto& [key, value] : session_options.config_options.configurations) {
+    if (key.find(option_prefix) == 0) {
+      // remove the prefix and add
+      ep_options[key.substr(option_prefix.length())] = value;
+    }
+  }
+
+  return ep_options;
+}
+
 std::unique_ptr<InternalEpFactory> CreateCudaEpFactory(Provider& provider) {
-  static const std::string ep_name = kCudaExecutionProvider;  // must be static to be valid for the lambdas
+  // Use the name that SessionOptionsAppendExecutionProvider uses to identify the EP as that matches the
+  // expected name in the configuration options. must be static to be valid for the lambdas
+  static const std::string ep_name = "CUDA";
 
   const auto is_supported = [](const OrtHardwareDevice* device,
                                OrtKeyValuePairs** /*ep_metadata*/,
@@ -42,23 +60,18 @@ std::unique_ptr<InternalEpFactory> CreateCudaEpFactory(Provider& provider) {
     return false;
   };
 
-  const auto create_cuda_ep = [&provider](const OrtSessionOptions& session_options, const OrtLogger& session_logger) {
+  const auto create_cuda_ep = [&provider](const OrtSessionOptions& session_options,
+                                          const OrtLogger& session_logger) {
     OrtCUDAProviderOptionsV2 options;
+    const SessionOptions& so = session_options.existing_value ? **session_options.existing_value
+                                                              : session_options.value;
 
-    // create provider_options with 'ep.<ep_name>' removed
-    // TODO: Shouldn't need to do this manually for all EPs.
-    std::unordered_map<std::string, std::string> provider_options;
-    const std::string ep_prefix = "ep." + ep_name + ".";
-    const size_t ep_prefix_length = ep_prefix.length();
-    for (const auto& entry : session_options.value.config_options.configurations) {
-      if (entry.first.find(ep_prefix) == 0) {
-        provider_options[entry.first.substr(ep_prefix_length)] = entry.second;
-      }
-    }
+    auto ep_options = GetOptionsFromSessionOptions(ep_name, so);
+    provider.UpdateProviderOptions(&options, ep_options);
 
-    provider.UpdateProviderOptions(&options, provider_options);
     auto ep_factory = provider.CreateExecutionProviderFactory(&options);
     auto ep = ep_factory->CreateProvider(session_options, session_logger);
+
     return ep;
   };
 
@@ -70,8 +83,8 @@ std::unique_ptr<InternalEpFactory> CreateCudaEpFactory(Provider& provider) {
 Status EpLibraryProviderBridge::Load() {
   auto& provider = provider_library_.Get();
   // Ideally the selection and creation funcs would come from Provider.
-  // Start with local hardcoding for now. The set of EPs to support is constrained and it's a short term approach.
-  // The matching on filename is fragile, but similar to what we do to load provider bridge EPs.
+  // Start with local hardcoding using the same library names as provider_bridge_ort.cc.
+  // The set of EPs to support is constrained and it's a short term approach.
   // See https://github.com/microsoft/onnxruntime/blob/90c263f471bbce724e77d8e62831d3a9fa838b2f/onnxruntime/core/session/provider_bridge_ort.cc#L1782-L1815
   if (library_path_.filename().string().find("onnxruntime_providers_cuda") != std::string::npos) {
     auto ep_factory = CreateCudaEpFactory(provider);
@@ -79,8 +92,7 @@ Status EpLibraryProviderBridge::Load() {
     internal_factory_ptrs_.push_back(ep_factory.get());
     factories_.push_back(std::move(ep_factory));
   } else {
-    ORT_NOT_IMPLEMENTED(
-        "Execution provider library is not supported: ", library_path_);
+    ORT_NOT_IMPLEMENTED("Execution provider library is not supported: ", library_path_);
   }
 
   return Status::OK();
@@ -97,17 +109,23 @@ Status EpLibraryPlugin::Load() {
     if (factories_.empty()) {
       ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(library_path_, false, &handle_));
 
-      OrtEpApi::CreateEpFactoryFn create_fn;
+      OrtEpApi::CreateEpFactoriesFn create_fn;
       ORT_RETURN_IF_ERROR(
-          Env::Default().GetSymbolFromLibrary(handle_, "CreateEpFactory", reinterpret_cast<void**>(&create_fn)));
+          Env::Default().GetSymbolFromLibrary(handle_, "CreateEpFactories", reinterpret_cast<void**>(&create_fn)));
 
-      OrtEpApi::OrtEpFactory* factory;
-      OrtStatus* status = create_fn(registration_name_.c_str(), OrtGetApiBase(), &factory);
+      // allocate buffer for EP to add factories to.
+      std::vector<OrtEpApi::OrtEpFactory*> factories{4, nullptr};
+
+      size_t num_factories = 0;
+      OrtStatus* status = create_fn(registration_name_.c_str(), OrtGetApiBase(), factories.data(), factories.size(),
+                                    &num_factories);
       if (status != nullptr) {
         return ToStatus(status);
       }
 
-      factories_.push_back(factory);
+      for (size_t i = 0; i < num_factories; ++i) {
+        factories_.push_back(factories[i]);
+      }
     }
   } catch (const std::exception& ex) {
     // TODO: Add logging of exception
@@ -133,7 +151,7 @@ Status EpLibraryPlugin::Unload() {
         ORT_RETURN_IF_ERROR(
             Env::Default().GetSymbolFromLibrary(handle_, "ReleaseEpFactory", reinterpret_cast<void**>(&release_fn)));
 
-        for (size_t idx = 0, end = factories_.size(); idx < end; ++end) {
+        for (size_t idx = 0, end = factories_.size(); idx < end; ++idx) {
           auto* factory = factories_[idx];
           if (factory == nullptr) {
             continue;
@@ -176,31 +194,28 @@ std::unique_ptr<EpLibraryInternal> CreateCpuEp() {
                                OrtKeyValuePairs** /*ep_metadata*/,
                                OrtKeyValuePairs** /*ep_options*/) -> bool {
     if (device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
-      // use OrtApis directly to allocate or `new OrtKeyValuePairs` is fine as well. can add values directly
-      // OrtApis::CreateKeyValuePairs(ep_metadata);
-      //*ep_options = new OrtKeyValuePairs();
-      //(*ep_options)->Add("options", "value");
-
       return true;
     }
 
     return false;
   };
 
-  const auto create_cpu_ep = [](const OrtSessionOptions& session_options, const OrtLogger& session_logger) {
+  const auto create_cpu_ep = [](const OrtSessionOptions& session_options,
+                                const OrtLogger& session_logger) {
     CPUExecutionProviderInfo epi{session_options.value.enable_cpu_mem_arena};
     auto ep = std::make_unique<CPUExecutionProvider>(epi);
     ep->SetLogger(session_logger.ToInternal());
     return ep;
   };
 
-  std::string ep_name = kCpuExecutionProvider;
+  std::string ep_name = "CPU";
   auto cpu_factory = std::make_unique<InternalEpFactory>(ep_name, "Microsoft", is_supported, create_cpu_ep);
   return std::make_unique<EpLibraryInternal>(std::move(cpu_factory));
 }
 
 #if defined(USE_DML)
 std::unique_ptr<EpLibraryInternal> CreateDmlEp() {
+  static const std::string ep_name = "DML";
   const auto is_supported = [](const OrtHardwareDevice* device,
                                OrtKeyValuePairs** /*ep_metadata*/,
                                OrtKeyValuePairs** /*ep_options*/) -> bool {
@@ -215,17 +230,20 @@ std::unique_ptr<EpLibraryInternal> CreateDmlEp() {
     return false;
   };
 
-  const auto create_dml_ep = [](const OrtSessionOptions& session_options, const OrtLogger& session_logger) {
-    auto dml_ep_factory = DMLProviderFactoryCreator::Create(session_options.value.config_options,
-                                                            /*device_id*/ 0,
-                                                            /* skip_software_device_check*/ false,
-                                                            /* disable_metacommands*/ false);
+  const auto create_dml_ep = [](const OrtSessionOptions& session_options,
+                                const OrtLogger& session_logger) {
+    const SessionOptions& so = session_options.existing_value ? **session_options.existing_value
+                                                              : session_options.value;
+
+    auto ep_options = GetOptionsFromSessionOptions(ep_name, so);
+    auto dml_ep_factory = DMLProviderFactoryCreator::CreateFromProviderOptions(so.config_options,
+                                                                               ep_options);
+
     auto dml_ep = dml_ep_factory->CreateProvider();
     dml_ep->SetLogger(session_logger.ToInternal());
     return dml_ep;
   };
 
-  std::string ep_name = kDmlExecutionProvider;
   auto dml_factory = std::make_unique<InternalEpFactory>(ep_name, "Microsoft", is_supported, create_dml_ep);
 
   return std::make_unique<EpLibraryInternal>(std::move(dml_factory));
@@ -234,6 +252,8 @@ std::unique_ptr<EpLibraryInternal> CreateDmlEp() {
 
 #if defined(USE_WEBGPU)
 std::unique_ptr<EpLibraryInternal> CreateWebGpuEp() {
+  static const std::string ep_name = "WebGPU";
+
   const auto is_supported = [](const OrtHardwareDevice* device,
                                OrtKeyValuePairs** /*ep_metadata*/,
                                OrtKeyValuePairs** /*ep_options*/) -> bool {
@@ -245,14 +265,17 @@ std::unique_ptr<EpLibraryInternal> CreateWebGpuEp() {
     return false;
   };
 
-  const auto create_webgpu_ep = [](const OrtSessionOptions& session_options, const OrtLogger& session_logger) {
-    auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(session_options.value.config_options);
+  const auto create_webgpu_ep = [](const OrtSessionOptions& session_options,
+                                   const OrtLogger& session_logger) {
+    const SessionOptions& so = session_options.existing_value ? **session_options.existing_value
+                                                              : session_options.value;
+
+    auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(so.config_options);
     auto webgpu_ep = webgpu_ep_factory->CreateProvider();
     webgpu_ep->SetLogger(session_logger.ToInternal());
     return webgpu_ep;
   };
 
-  std::string ep_name = kWebGpuExecutionProvider;
   auto webgpu_factory = std::make_unique<InternalEpFactory>(ep_name, "Microsoft", is_supported, create_webgpu_ep);
 
   return std::make_unique<EpLibraryInternal>(std::move(webgpu_factory));

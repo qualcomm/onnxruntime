@@ -110,9 +110,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 
   // Add provider options to the session config options.
   // Use a new key with the format: "ep.<EP_NAME>.<PROVIDER_OPTION_KEY>"
+  const auto option_prefix = ProviderOptionsUtils::GetProviderOptionPrefix(provider_name);
   for (const auto& [key, value] : provider_options) {
     std::ostringstream new_key_builder;
-    new_key_builder << "ep." << provider_name << "." << key;
+    new_key_builder << option_prefix << key;
     const std::string new_key = new_key_builder.str();
     if (new_key.size() > ConfigOptions::kMaxKeyLength) {
       LOGS_DEFAULT(WARNING) << "Can't add provider option to session configurations: "
@@ -204,20 +205,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   }
 
   return status;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* /*sess_options*/,
-                    _In_ OrtEnv* /*env*/, _In_ const char* /*ep_name*/,
-                    _In_reads_(num_op_options) const char* const* /*ep_option_keys*/,
-                    _In_reads_(num_op_options) const char* const* /*ep_option_vals*/,
-                    size_t /*num_ep_options*/) {
-  API_IMPL_BEGIN
-  // check ep_name is registered in env
-  // create OrtKeyValuePairs for the options
-  // figure out how to use the OrtEpFactory in the Env with SessionOptions
-  // - could maybe create IExecutionProviderFactory instance that abstracts the usage of the OrtEpFactory
-  return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_V2 is not implemented.");
   API_IMPL_END
 }
 

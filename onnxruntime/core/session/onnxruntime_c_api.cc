@@ -2410,7 +2410,7 @@ ORT_API(void, OrtApis::AddKeyValuePair, _In_ OrtKeyValuePairs* kvps,
   entries.Add(key, value);
 }
 
-ORT_API(const char*, OrtApis::GetKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key) {
+ORT_API(const char*, OrtApis::GetKeyValue, _In_ const OrtKeyValuePairs* kvps, _In_ const char* key) {
   const char* value = nullptr;
 
   if (auto entry = kvps->entries.find(key); entry != kvps->entries.end()) {
@@ -2420,10 +2420,10 @@ ORT_API(const char*, OrtApis::GetKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_
   return value;
 }
 
-ORT_API(void, OrtApis::GetKeyValuePairs, _In_ OrtKeyValuePairs* kvps,
-        _Outptr_ const char** keys, _Outptr_ const char** values, _Out_ size_t* num_entries) {
-  keys = kvps->keys.data();
-  values = kvps->values.data();
+ORT_API(void, OrtApis::GetKeyValuePairs, _In_ const OrtKeyValuePairs* kvps,
+        _Outptr_ const char* const** keys, _Outptr_ const char* const** values, _Out_ size_t* num_entries) {
+  *keys = kvps->keys.data();
+  *values = kvps->values.data();
   *num_entries = kvps->entries.size();
 }
 
@@ -2842,13 +2842,12 @@ static constexpr OrtApi ort_api_1_to_22 = {
 
     &OrtApis::CreateKeyValuePairs,
     &OrtApis::AddKeyValuePair,
-    &OrtApis::GetKeyValuePair,
+    &OrtApis::GetKeyValue,
     &OrtApis::GetKeyValuePairs,
     &OrtApis::RemoveKeyValuePair,
     &OrtApis::ReleaseKeyValuePairs,
 
     &OrtApis::GetEpApi,
-    &OrtApis::SessionOptionsAppendExecutionProvider_V2,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

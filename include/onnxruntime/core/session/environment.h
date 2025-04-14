@@ -113,7 +113,7 @@ class Environment {
     return it != internal_ep_factories_.end() ? *it : nullptr;
   }
 
-  const std::unordered_set<const OrtExecutionDevice*> GetExecutionDevices() const {
+  const std::vector<const OrtEpDevice*>& GetOrtEpDevices() const {
     return execution_devices_;
   }
 
@@ -142,7 +142,7 @@ class Environment {
 
   struct EpInfo {
     // calls EpLibrary::Load
-    // for each factory gets the OrtExecutionDevice instances and adds to execution_devices
+    // for each factory gets the OrtEpDevice instances and adds to execution_devices
     // internal_factory is set if this is an internal EP
     static Status Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
                          const std::vector<InternalEpFactory*>& internal_factories = {});
@@ -152,7 +152,7 @@ class Environment {
     ~EpInfo();
 
     std::unique_ptr<EpLibrary> library;
-    std::vector<std::unique_ptr<OrtExecutionDevice>> execution_devices;
+    std::vector<std::unique_ptr<OrtEpDevice>> execution_devices;
     std::vector<InternalEpFactory*> internal_factories;  // factories that provide IExecutionProvider directly
 
    private:
@@ -162,8 +162,10 @@ class Environment {
   // registration name to EpInfo for library
   std::unordered_map<std::string, std::unique_ptr<EpInfo>> ep_libraries_;
 
-  // combined set of OrtExecutionDevices for all registered OrtEpFactory instances
-  std::unordered_set<const OrtExecutionDevice*> execution_devices_;
+  // combined set of OrtEpDevices for all registered OrtEpFactory instances
+  // std::vector so we can use directly in OrtEpApi::GetEpDevices.
+  // inefficient when EPs are unregistered but that it not expected to be a common operation.
+  std::vector<const OrtEpDevice*> execution_devices_;
 
   // lookup set for internal EPs so we can create an IExecutionProvider directly
   std::unordered_set<InternalEpFactory*> internal_ep_factories_;

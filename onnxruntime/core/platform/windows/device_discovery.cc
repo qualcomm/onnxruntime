@@ -107,14 +107,7 @@ std::unordered_set<OrtHardwareDevice> GetInferencingDevices() {
 }  // namespace
 
 std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
-  std::unordered_set<OrtHardwareDevice> devices;
-  // get CPU devices
-
-  // get GPU devices
-
-  // get NPU devices
-
-  devices = GetInferencingDevices();
+  std::unordered_set<OrtHardwareDevice> devices = GetInferencingDevices();
   return devices;
 }
 

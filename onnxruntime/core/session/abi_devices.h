@@ -51,8 +51,7 @@ struct equal_to<OrtHardwareDevice> {
 };
 }  // namespace std
 
-// TODO: Rename OrtEpDevice? More consistent with other 'EP' related things in the API
-struct OrtExecutionDevice {
+struct OrtEpDevice {
   std::string ep_name;
   std::string ep_vendor;
   const OrtHardwareDevice* device;

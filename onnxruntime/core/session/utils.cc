@@ -5,6 +5,7 @@
 
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/provider_options.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/environment.h"
 #include "core/session/inference_session.h"
@@ -18,55 +19,61 @@
 using namespace onnxruntime;
 namespace {
 // Select execution providers based on the device policy and available devices and add to session
-// TODO: Should this be in session or lower like framework?
 Status AutoSelectEPs(const Environment& env, InferenceSession& sess, const std::string& ep_to_select) {
-  const auto& execution_devices = env.GetExecutionDevices();
+  const auto& execution_devices = env.GetOrtEpDevices();
 
-  // FIXME: Is this too fragile? The EP can't keep a pointer to or read from the session options the CreateEp
-  // gets once that call returns as it's pointing to this local variable.
-
-  // create OrtSessionOptions for the CreateEp call.
-  // Once the InferenceSession is created, its SessionOptions is the source of truth.
-  // We added the ep_options there as well, and need to pass those values through.
+  // Create OrtSessionOptions for the CreateEp call.
+  // Once the InferenceSession is created, its SessionOptions is the source of truth and contains all the values from
+  // the user provided OrtSessionOptions.
+  auto& session_options = sess.GetMutableSessionOptions();
   OrtSessionOptions ort_so;
-  // this copy isn't ideal, but we need the user provided options which were in a const OrtSesionOptions in the
-  // call to CreateSessionAndLoadModel, and are now in the InferenceSession. it shouldn't be too heavyweight.
-  // if we need to optimize we could add an `onnxruntime::SessionOptions* existing` member to OrtSessionOptions,
-  // set it to the InferenceSession's SessionOptions, and prefer that over OrtSessionOptions.value in accessors
-  // like OrtEpApi::SessionOptionsConfigOptions.
-  // the CreateEp call would be the only user and as it gets a const OrtSessionOptions* it can only use accessors.
-  ort_so.value = sess.GetSessionOptions();
+  ort_so.existing_value = &session_options;
   const auto& session_logger = sess.GetLogger();
-  // OrtLogger is a cast from logging::Logger
-  const OrtLogger* api_session_logger = session_logger->ToExternal();
+  const OrtLogger& api_session_logger = *session_logger->ToExternal();
 
   // CPU
-  for (const auto* device : execution_devices) {
-    if (device->ep_name != ep_to_select) {
+  for (const auto* ep_device : execution_devices) {
+    if (ep_device->ep_name != ep_to_select) {
       continue;
     }
 
     // get internal factory if available
-    InternalEpFactory* internal_factory = env.GetInternalEpFactory(device->ep_factory);
+    InternalEpFactory* internal_factory = env.GetInternalEpFactory(ep_device->ep_factory);
 
     // in the real implementation multiple devices can be assigned to an EP
     // in our current test-able setup it's 1:1
-    std::vector<const OrtHardwareDevice*> devices{device->device};
-    std::vector<const OrtKeyValuePairs*> ep_metadata{&device->ep_metadata};
+    std::vector<const OrtHardwareDevice*> devices{ep_device->device};
+    std::vector<const OrtKeyValuePairs*> ep_metadata{&ep_device->ep_metadata};
 
-    std::shared_ptr<IExecutionProvider> ep;
+    // add ep_options to SessionOptions with prefix.
+    // preserve any user provided values.
+    const std::string ep_options_prefix = ProviderOptionsUtils::GetProviderOptionPrefix(ep_device->ep_name);
+    for (const auto& [key, value] : ep_device->ep_options.entries) {
+      auto prefixed_key = ep_options_prefix + key;
+      if (session_options.config_options.configurations.count(key) == 0) {
+        // add the default value with prefix
+        ORT_RETURN_IF_ERROR(session_options.config_options.AddConfigEntry(prefixed_key.c_str(), value.c_str()));
+      }
+    }
+
+    std::unique_ptr<IExecutionProvider> ep;
+
     if (internal_factory) {
       // this is a factory we created and registered
-      OrtStatus* status = internal_factory->CreateIExecutionProvider(devices.data(), ep_metadata.data(),
-                                                                     devices.size(), &ort_so, api_session_logger, ep);
+      OrtStatus* status = internal_factory->CreateIExecutionProvider(
+          devices.data(), ep_metadata.data(), devices.size(),
+          &ort_so, &api_session_logger, ep);
+
       if (status != nullptr) {
         return ToStatus(status);
       }
     } else {
       OrtEpApi::OrtEp* api_ep = nullptr;
       // add the ep_options to session options but leave any existing entries (user provided overrides) untouched.
-      auto status = device->ep_factory->CreateEp(device->ep_factory, devices.data(), ep_metadata.data(),
-                                                 devices.size(), &ort_so, api_session_logger, &api_ep);
+      auto status = ep_device->ep_factory->CreateEp(
+          ep_device->ep_factory, devices.data(), ep_metadata.data(), devices.size(),
+          &ort_so, &api_session_logger, &api_ep);
+
       if (status != nullptr) {
         return ToStatus(status);
       }
@@ -77,6 +84,9 @@ Status AutoSelectEPs(const Environment& env, InferenceSession& sess, const std::
     }
 
     ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
+
+    // once we have the EP and one device that's enough for test purposes.
+    break;
   }
 
   return Status::OK();
@@ -139,9 +149,7 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
         env->GetEnvironment());
   }
 
-  // if there are no providers registered, and there's an ep selection policy set, do auto ep selection
-  // TEMPORARY for testing. No providers registered equates to defaulting to ORT CPU EP currently so we need to honour
-  // that in the real world.
+  // TEMPORARY for testing. Manually specify the EP to select.
   auto auto_select_ep_name = sess->GetSessionOptions().config_options.GetConfigEntry("test.ep_to_select");
   if (auto_select_ep_name) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(AutoSelectEPs(env->GetEnvironment(), *sess, *auto_select_ep_name));

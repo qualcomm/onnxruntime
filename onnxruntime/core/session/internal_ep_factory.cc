@@ -5,6 +5,7 @@
 
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ep_api_utils.h"
+#include "core/session/ort_apis.h"
 
 namespace onnxruntime {
 
@@ -44,14 +45,14 @@ OrtStatus* InternalEpFactory::CreateEp(const OrtHardwareDevice* const* /*devices
 
 OrtStatus* InternalEpFactory::CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
                                                        const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
-                                                       size_t /*num_devices*/,
+                                                       size_t num_devices,
                                                        const OrtSessionOptions* session_options,
                                                        const OrtLogger* session_logger,
-                                                       std::shared_ptr<IExecutionProvider>& ep) {
-  // convert API types to internals
-  // const SessionOptions& session_options = api_session_options->value;
-  // const auto& logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(api_logger);
-
+                                                       std::unique_ptr<IExecutionProvider>& ep) {
+  if (num_devices != 1) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "InternalEpFactory only supports one device at a time.");
+  }
   ep = create_func_(*session_options, *session_logger);
 
   return nullptr;

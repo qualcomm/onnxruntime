@@ -38,13 +38,11 @@ class InternalEpFactory : public OrtEpApi::OrtEpFactory {
                       _In_ const OrtLogger* logger, _Out_ OrtEpApi::OrtEp** ep);
 
   // we implement this. provide the same args in case we need something from device or ep_metadata_pairs in the future.
-  // TODO: reutrn unique_ptr or shared_ptr? latter might be more flexible as it doesn't require the implementer to
-  // create a new instance every time. it's going to become a shared_ptr when added to InferenceSession anyway.
   OrtStatus* CreateIExecutionProvider(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
                                       _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
                                       _In_ size_t num_devices,
                                       _In_ const OrtSessionOptions* session_options,
-                                      _In_ const OrtLogger* logger, _Out_ std::shared_ptr<IExecutionProvider>& ep);
+                                      _In_ const OrtLogger* logger, _Out_ std::unique_ptr<IExecutionProvider>& ep);
 
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEpApi::OrtEp* ep);

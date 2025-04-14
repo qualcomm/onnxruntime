@@ -8,7 +8,6 @@
 #include "core/common/common.h"
 #include "core/session/internal_ep_factory.h"
 #include "core/session/onnxruntime_c_api.h"
-#include "core/session/provider_bridge_ep_factory.h"
 #include "core/session/provider_bridge_library.h"
 
 namespace onnxruntime {

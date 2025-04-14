@@ -372,10 +372,10 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
     std::unique_ptr<EpInfo> ep_info = nullptr;
     ORT_RETURN_IF_ERROR(EpInfo::Create(std::move(ep_library), ep_info));
 
-    // add the pointers to the OrtExecutionDevice instances to our global list
+    // add the pointers to the OrtEpDevice instances to our global list
     execution_devices_.reserve(execution_devices_.size() + ep_info->execution_devices.size());
     for (const auto& ed : ep_info->execution_devices) {
-      execution_devices_.insert(ed.get());
+      execution_devices_.push_back(ed.get());
     }
 
     for (const auto& internal_factory : internal_factories) {
@@ -407,7 +407,7 @@ Status Environment::CreateAndRegisterInternalEps() {
 
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path) {
   // need to special case provider bridge EPs. using the current EP name.
-  if (registration_name == kCudaExecutionProvider) {
+  if (registration_name == "CUDA") {
     auto ep_library = std::make_unique<EpLibraryProviderBridge>(registration_name, lib_path);
     // we do a std::move in the function call so need a valid pointer for the args after the move
     auto* internal_library_ptr = ep_library.get();
@@ -416,13 +416,13 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   } else {
     // FUTURE: Plugin EP load goes here once the OrtEp API is finalized.
     // load the library
-    // std::unique_ptr<EpLibrary> ep_library = std::make_unique<EpLibraryPlugin>(registration_name, lib_path);
-    ORT_NOT_IMPLEMENTED("Plugin execution provider library supported is not finalized: ", registration_name);
+    std::unique_ptr<EpLibrary> ep_library = std::make_unique<EpLibraryPlugin>(registration_name, lib_path);
+    return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library));
   }
 }
 
 Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_name) {
-  if (ep_libraries_.count(ep_name) > 0) {
+  if (ep_libraries_.count(ep_name) == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", ep_name, " was not registered.");
   }
 
@@ -430,7 +430,8 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
     // unload.
     auto ep_info = std::move(ep_libraries_[ep_name]);
 
-    // remove from map and global list of OrtExecutionDevice* before unloading so we don't get a leftover entry.
+    // remove from map and global list of OrtEpDevice* before unloading so we don't get a leftover entry if
+    // something goes wrong in any of the following steps..
     ep_libraries_.erase(ep_name);
 
     for (auto* internal_factory : ep_info->internal_factories) {
@@ -438,7 +439,10 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
     }
 
     for (const auto& ed : ep_info->execution_devices) {
-      execution_devices_.erase(ed.get());
+      if (auto it = std::find(execution_devices_.begin(), execution_devices_.end(), ed.get());
+          it != execution_devices_.end()) {
+        execution_devices_.erase(it);
+      }
     }
 
     ep_info.reset();  // explicit but only so it's easier to debug an issue by stepping into this.
@@ -477,7 +481,7 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
       OrtKeyValuePairs* ep_options = nullptr;
 
       if (factory.GetDeviceInfoIfSupported(&factory, &device, &ep_metadata, &ep_options)) {
-        auto ed = std::make_unique<OrtExecutionDevice>();
+        auto ed = std::make_unique<OrtEpDevice>();
         ed->ep_name = factory.GetName(&factory);
         ed->ep_vendor = factory.GetVendor(&factory);
         ed->device = &device;
