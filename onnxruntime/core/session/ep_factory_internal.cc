@@ -3,6 +3,8 @@
 
 #include "core/session/ep_factory_internal.h"
 
+#include "core/framework/error_code_helper.h"
+#include "core/session/abi_devices.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ep_api_utils.h"
 #include "core/session/ort_apis.h"
@@ -61,5 +63,30 @@ OrtStatus* EpFactoryInternal::CreateIExecutionProvider(const OrtHardwareDevice* 
 void EpFactoryInternal::ReleaseEp(OrtEpApi::OrtEp* /*ep*/) {
   // we never create an OrtEp so we should never be trying to release one
   ORT_THROW("Internal error. No ReleaseEp call is required for EpFactoryInternal.");
+}
+
+InternalExecutionProviderFactory::InternalExecutionProviderFactory(EpFactoryInternal& ep_factory,
+                                                                   std::vector<const OrtEpDevice*> ep_devices)
+    : ep_factory_{ep_factory} {
+  devices_.reserve(ep_devices.size());
+  ep_metadata_.reserve(ep_devices.size());
+
+  for (const auto* ep_device : ep_devices) {
+    devices_.push_back(ep_device->device);
+    ep_metadata_.push_back(&ep_device->ep_metadata);
+  }
+}
+
+std::unique_ptr<IExecutionProvider>
+InternalExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
+                                                 const OrtLogger& session_logger) {
+  std::unique_ptr<IExecutionProvider> ep;
+  OrtStatus* status = ep_factory_.CreateIExecutionProvider(devices_.data(), ep_metadata_.data(), devices_.size(),
+                                                           &session_options, &session_logger, ep);
+  if (status != nullptr) {
+    ORT_THROW("Error creating execution provider: ", ToStatus(status).ToString());
+  }
+
+  return ep;
 }
 }  // namespace onnxruntime

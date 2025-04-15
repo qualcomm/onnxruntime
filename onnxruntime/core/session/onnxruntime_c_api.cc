@@ -37,6 +37,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
+#include "core/session/ep_library_internal.h"
 #include "core/session/lora_adapters.h"
 #include "core/session/model_editor_api.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -2435,6 +2436,126 @@ ORT_API(void, OrtApis::ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs* k
   delete kvps;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* registration_name,
+                    const ORTCHAR_T* path) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().RegisterExecutionProviderLibrary(registration_name, path));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* registration_name) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF_STATUS_NOT_OK(env->GetEnvironment().UnregisterExecutionProviderLibrary(registration_name));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetEpDevices, _In_ const OrtEnv* env,
+                    _Outptr_ const OrtEpDevice* const** ep_devices, _Out_ size_t* num_ep_devices) {
+  API_IMPL_BEGIN
+  const auto& execution_devices = env->GetEnvironment().GetOrtEpDevices();
+  *ep_devices = execution_devices.data();
+  *num_ep_devices = execution_devices.size();
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* session_options,
+                    _In_ OrtEnv* env, _In_ const char* ep_name_in,
+                    _In_reads_(num_op_options) const char* const* ep_option_keys,
+                    _In_reads_(num_op_options) const char* const* ep_option_vals,
+                    size_t num_ep_options) {
+  API_IMPL_BEGIN
+  const auto& execution_devices = env->GetEnvironment().GetOrtEpDevices();
+  std::string ep_name{ep_name_in};
+  std::vector<const OrtEpDevice*> ep_devices;
+
+  EpFactoryInternal* internal_factory = nullptr;
+  for (const auto& entry : execution_devices) {
+    if (entry->ep_name == ep_name) {
+      internal_factory = env->GetEnvironment().GetEpFactoryInternal(entry->ep_factory);
+      if (!internal_factory) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "EP is not currently supported by this API");
+      }
+
+      ep_devices.push_back(entry);
+
+      // add the options to the session options with the EP prefix.
+      // first add the default values with prefix followed by user specified values so those win
+      const auto prefix = ProviderOptionsUtils::GetProviderOptionPrefix(entry->ep_name);
+      auto& config_options = session_options->value.config_options;
+      for (const auto& [key, value] : entry->ep_options.entries) {
+        ORT_API_RETURN_IF_STATUS_NOT_OK(config_options.AddConfigEntry((prefix + key).c_str(), value.c_str()));
+      }
+
+      for (size_t i = 0; i < num_ep_options; ++i) {
+        if (ep_option_keys[i] == nullptr) {
+          continue;
+        }
+
+        ORT_API_RETURN_IF_STATUS_NOT_OK(config_options.AddConfigEntry((prefix + ep_option_keys[i]).c_str(),
+                                                                      ep_option_vals[i]));
+      }
+
+      // TODO: This picks the first device as we don't currently handle multiple in EpFactoryInternal.
+      //       We need to refine this to pick the best device. Can we plugin some of the selection logic here?
+      //       e.g. DML and WebGPU will match an integrated and discrete GPU and we should prefer the discrete one.
+      break;
+    }
+  }
+
+  if (internal_factory) {
+    session_options->provider_factories.push_back(
+        std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices));
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+// OrtEpDevice accessors
+ORT_API(OrtHardwareDeviceType, OrtApis::HardwareDevice_Type, _In_ const OrtHardwareDevice* device) {
+  return OrtHardwareDeviceType(device->type);
+}
+
+ORT_API(int32_t, OrtApis::HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device) {
+  return device->vendor_id;
+}
+
+ORT_API(const char*, OrtApis::HardwareDevice_Vendor, _In_ const OrtHardwareDevice* device) {
+  return device->vendor.c_str();
+}
+
+ORT_API(int32_t, OrtApis::HardwareDevice_BusId, _In_ const OrtHardwareDevice* device) {
+  return device->bus_id;
+}
+
+ORT_API(const OrtKeyValuePairs*, OrtApis::HardwareDevice_Metadata, _In_ const OrtHardwareDevice* ep_device) {
+  return &ep_device->properties;
+}
+
+ORT_API(const char*, OrtApis::EpDevice_EpName, _In_ const OrtEpDevice* ep_device) {
+  return ep_device->ep_name.c_str();
+}
+
+ORT_API(const char*, OrtApis::EpDevice_EpVendor, _In_ const OrtEpDevice* ep_device) {
+  return ep_device->ep_vendor.c_str();
+}
+
+ORT_API(const OrtKeyValuePairs*, OrtApis::EpDevice_EpMetadata, _In_ const OrtEpDevice* ep_device) {
+  return &ep_device->ep_metadata;
+}
+
+ORT_API(const OrtKeyValuePairs*, OrtApis::EpDevice_EpOptions, _In_ const OrtEpDevice* ep_device) {
+  return &ep_device->ep_options;
+}
+
+ORT_API(const OrtHardwareDevice*, OrtApis::EpDevice_Device, _In_ const OrtEpDevice* ep_device) {
+  return ep_device->device;
+}
+
 ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
   return OrtExecutionProviderApi::GetEpApi();
 }
@@ -2847,6 +2968,23 @@ static constexpr OrtApi ort_api_1_to_22 = {
     &OrtApis::RemoveKeyValuePair,
     &OrtApis::ReleaseKeyValuePairs,
 
+    &OrtApis::RegisterExecutionProviderLibrary,
+    &OrtApis::UnregisterExecutionProviderLibrary,
+    &OrtApis::GetEpDevices,
+    &OrtApis::SessionOptionsAppendExecutionProvider_V2,
+
+    &OrtApis::HardwareDevice_Type,
+    &OrtApis::HardwareDevice_VendorId,
+    &OrtApis::HardwareDevice_Vendor,
+    &OrtApis::HardwareDevice_BusId,
+    &OrtApis::HardwareDevice_Metadata,
+
+    &OrtApis::EpDevice_EpName,
+    &OrtApis::EpDevice_EpVendor,
+    &OrtApis::EpDevice_EpMetadata,
+    &OrtApis::EpDevice_EpOptions,
+    &OrtApis::EpDevice_Device,
+
     &OrtApis::GetEpApi,
 };
 
@@ -2879,8 +3017,10 @@ static_assert(offsetof(OrtApi, GetBuildInfoString) / sizeof(void*) == 254, "Size
 static_assert(offsetof(OrtApi, KernelContext_GetResource) / sizeof(void*) == 265, "Size of version 16 API cannot change");
 static_assert(offsetof(OrtApi, SessionOptionsAppendExecutionProvider_OpenVINO_V2) / sizeof(void*) == 275, "Size of version 17 API cannot change");
 static_assert(offsetof(OrtApi, AddExternalInitializersFromFilesInMemory) / sizeof(void*) == 279, "Size of version 18 API cannot change");
-// no additions in version 19
+// no additions in version 19, 20, and 21
 static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Size of version 20 API cannot change");
+
+static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 315, "Size of version 22 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.22.0",

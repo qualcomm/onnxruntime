@@ -71,7 +71,7 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
                                            _Out_opt_ OrtKeyValuePairs** ep_options) {
     const auto* ep = static_cast<const ExampleEpFactory*>(this_ptr);
 
-    if (ep->ep_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
+    if (ep->ort_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
       // these can be returned as nullptr if you have nothing to add.
       ep->ort_api.CreateKeyValuePairs(ep_metadata);
       ep->ort_api.CreateKeyValuePairs(ep_options);

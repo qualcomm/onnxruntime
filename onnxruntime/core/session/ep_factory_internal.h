@@ -3,8 +3,11 @@
 
 #pragma once
 
+#include <vector>
+
 #include "core/common/common.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/providers.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
@@ -54,6 +57,24 @@ class EpFactoryInternal : public OrtEpApi::OrtEpFactory {
   const CreateFunc create_func_;             // function to create the EP instance
 
   std::vector<std::unique_ptr<EpFactoryInternal>> eps_;  // EP instances created by this factory
+};
+
+// IExecutionProviderFactory for EpFactoryInternal that is required for SessionOptionsAppendExecutionProvider_V2
+struct InternalExecutionProviderFactory : public IExecutionProviderFactory {
+ public:
+  InternalExecutionProviderFactory(EpFactoryInternal& ep_factory, std::vector<const OrtEpDevice*> ep_devices);
+
+  std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
+                                                     const OrtLogger& session_logger) override;
+
+  std::unique_ptr<IExecutionProvider> CreateProvider() override {
+    ORT_NOT_IMPLEMENTED("CreateProvider without parameters is not supported.");
+  }
+
+ private:
+  EpFactoryInternal& ep_factory_;
+  std::vector<const OrtHardwareDevice*> devices_;
+  std::vector<const OrtKeyValuePairs*> ep_metadata_;
 };
 
 }  // namespace onnxruntime

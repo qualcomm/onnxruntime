@@ -5018,6 +5018,166 @@ struct OrtApi {
    */
   ORT_CLASS_RELEASE(KeyValuePairs);
 
+  /** \brief Register an execution provider library with ONNX Runtime.
+   *
+   * The library must export 'CreateEpFactories' and 'ReleaseEpFactory' functions.
+   *
+   * \param[in] env The OrtEnv instance to register the library in.
+   * \param[in] registration_name The name to register the execution provider library under.
+   * \param[in] path The path to the execution provider library.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name,
+                  _In_ const ORTCHAR_T* path);
+
+  /** \brief Unregister an execution provider library with ONNX Runtime.
+   *
+   * ORT will call ReleaseEpFactory for all factories created by the library, and unload the library.
+   *
+   * You <b>MUST</b> ensure there are no Session instances using execution providers created by the library
+   * before calling this function.
+   *
+   * \param[in] env The OrtEnv instance to unregister the library from.
+   * \param[in] registration_name The name the execution provider library was registered under.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name);
+
+  /** \brief Get the list of available OrtEpDevice instances.
+   *
+   * Each OrtEpDevice instance contains details of the execution provider and the device it will use.
+   *
+   * \param[in] env The OrtEnv instance to query.
+   * \param[out] ep_devices The OrtEpDevice instances that the execution provider will use.
+   * \param[out] num_ep_devices The number of OrtEpDevice instances returned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(GetEpDevices, _In_ const OrtEnv* env,
+                  _Outptr_ const OrtEpDevice* const** ep_devices, _Out_ size_t* num_ep_devices);
+
+  /** \brief Append execution provider to the session options by name.
+   *
+   * \param[in] session_options Session options to add execution provider to.
+   * \param[in] env Environment that execution providers was registered with
+   * \param[in] ep_name Execution provider to add. Use GetEpDevices to discover the available execution providers and
+   *                    the devices they will use.
+   * \param[in] ep_option_keys Optional keys to configure the execution provider.
+   * \param[in] ep_option_vals Optional values to configure the execution provider.
+   * \param[in] num_keys Number of execution provide options to add.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* session_options,
+                  _In_ OrtEnv* env, _In_ const char* ep_name,
+                  _In_reads_(num_op_options) const char* const* ep_option_keys,
+                  _In_reads_(num_op_options) const char* const* ep_option_vals,
+                  size_t num_ep_options);
+
+  /** \brief Get the hardware device type.
+   *
+   * \param[in] device The OrtHardwareDevice instance to query.
+   * \return The hardware device type.
+   *
+   * \since Version 1.22.
+   */
+  OrtHardwareDeviceType(ORT_API_CALL* HardwareDevice_Type)(_In_ const OrtHardwareDevice* device);
+
+  /** \brief Get the hardware device's vendor identifier.
+   *
+   * \param[in] device The OrtHardwareDevice instance to query.
+   * \return The hardware device vendor identifier.
+   *
+   * \since Version 1.22.
+   */
+  int32_t(ORT_API_CALL* HardwareDevice_VendorId)(_In_ const OrtHardwareDevice* device);
+
+  /** \brief Get the hardware device's vendor name.
+   *
+   * \param[in] device The OrtHardwareDevice instance to query.
+   * \return The hardware device vendor name.
+   *
+   * \since Version 1.22.
+   */
+  const char*(ORT_API_CALL* HardwareDevice_Vendor)(_In_ const OrtHardwareDevice* device);
+
+  /** \brief Get the hardware device's unique identifier.
+   *
+   * \param[in]
+   * \param[out]
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  // ??? does the user care about the 'bus' part or could this just be HardwareDevice_Id?
+  int32_t(ORT_API_CALL* HardwareDevice_BusId)(_In_ const OrtHardwareDevice* device);
+
+  /** \brief Get hardware device metadata.
+   *
+   * \param[in] device The OrtHardwareDevice instance to query.
+   * \return An OrtKeyValuePairs instance containing the metadata for the device.
+   *         Note: ORT owns the instance so the user must not call ReleaseKeyValuePairs with it.
+   *
+   * \since Version 1.22.
+   */
+  const OrtKeyValuePairs*(ORT_API_CALL* HardwareDevice_Metadata)(_In_ const OrtHardwareDevice* device);
+
+  /** \brief Get the execution provider name.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \return The execution provider name.
+   *
+   * \since Version 1.22.
+   */
+  const char*(ORT_API_CALL* EpDevice_EpName)(_In_ const OrtEpDevice* ep_device);
+
+  /** \brief Get the execution provider vendor name.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \return The execution provider vendor name.
+   *
+   * \since Version 1.22.
+   */
+  const char*(ORT_API_CALL* EpDevice_EpVendor)(_In_ const OrtEpDevice* ep_device);
+
+  /** \brief Get the metadata for the OrtEpDevice.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \return An OrtKeyValuePairs instance containing the metadata for the device.
+   *
+   * \since Version 1.22.
+   */
+  const OrtKeyValuePairs*(ORT_API_CALL* EpDevice_EpMetadata)(_In_ const OrtEpDevice* ep_device);
+
+  /** \brief Get the execution provider options for the OrtEpDevice.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \return An OrtKeyValuePairs instance containing the execution provider options for the device.
+   *
+   * \since Version 1.22.
+   */
+  const OrtKeyValuePairs*(ORT_API_CALL* EpDevice_EpOptions)(_In_ const OrtEpDevice* ep_device);
+
+  /** \brief Get the OrtHardwareDevice instance for the OrtEpDevice.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \return The OrtHardwareDevice instance for the device.
+   *
+   * \since Version 1.22.
+   */
+  const OrtHardwareDevice*(ORT_API_CALL* EpDevice_Device)(_In_ const OrtEpDevice* ep_device);
+
   /** \brief Get the API for dynamically creating execution providers.
    *
    * \return Execution Provider API struct
@@ -5696,7 +5856,9 @@ struct OrtCompileApi {
 };
 
 /**
- * \brief The OrtEpApi struct provides functions to dynamically create and manage execution providers.
+ * \brief The OrtEpApi struct provides functions to dynamically create execution providers.
+ *
+ * Authors of an execution provider library use types and functions in the OrtEpApi to implement an execution provider.
  *
  * Execution providers are used to offload computation to hardware accelerators.
  * See \href https://onnxruntime.ai/docs/execution_providers for details.
@@ -5798,7 +5960,7 @@ struct OrtEpApi {
      * \param[in] num_devices The number of devices the execution provider was selected for.
      * \param[in] session_options The OrtSessionOptions instance that contains the configuration options for the
      *                            session. This will include ep_options from GetDeviceInfoIfSupported as well as any
-     *                            user provided overrides. 
+     *                            user provided overrides.
      *                            Execution provider specific options will have a prefix of 'ep.<ep name>.'.
      * \param[in] logger The OrtLogger instance for the session that the execution provider should use for logging.
      * \param[out] ep The OrtEp instance created by the factory.
@@ -5857,166 +6019,6 @@ struct OrtEpApi {
    * \since Version 1.22.
    */
   typedef OrtStatus* (*ReleaseEpFactoryFn)(_In_ OrtEpFactory* factory);
-
-  /** \brief Register an execution provider library with ONNX Runtime.
-   *
-   * The library must export 'CreateEpFactories' and 'ReleaseEpFactory' functions.
-   *
-   * \param[in] env The OrtEnv instance to register the library in.
-   * \param[in] registration_name The name to register the execution provider library under.
-   * \param[in] path The path to the execution provider library.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.22.
-   */
-  ORT_API2_STATUS(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name,
-                  _In_ const ORTCHAR_T* path);
-
-  /** \brief Unregister an execution provider library with ONNX Runtime.
-   *
-   * ORT will call ReleaseEpFactory for all factories created by the library, and unload the library.
-   *
-   * You <b>MUST</b> ensure there are no Session instances using execution providers created by the library
-   * before calling this function.
-   *
-   * \param[in] env The OrtEnv instance to unregister the library from.
-   * \param[in] registration_name The name the execution provider library was registered under.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.22.
-   */
-  ORT_API2_STATUS(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name);
-
-  /** \brief Get the list of available OrtEpDevice instances.
-   *
-   * Each OrtEpDevice instance contains details of the execution provider and the device it will use.
-   *
-   * \param[in] env The OrtEnv instance to query.
-   * \param[out] ep_devices The OrtEpDevice instances that the execution provider will use.
-   * \param[out] num_ep_devices The number of OrtEpDevice instances returned.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.22.
-   */
-  ORT_API2_STATUS(GetEpDevices, _In_ const OrtEnv* env,
-                  _Outptr_ const OrtEpDevice* const** ep_devices, _Out_ size_t* num_ep_devices);
-
-  /** \brief Append execution provider to the session options by name.
-   *
-   * \param[in] session_options Session options to add execution provider to.
-   * \param[in] env Environment that execution providers was registered with
-   * \param[in] ep_name Execution provider to add. Use GetEpDevices to discover the available execution providers and
-   *                    the devices they will use.
-   * \param[in] ep_option_keys Optional keys to configure the execution provider.
-   * \param[in] ep_option_vals Optional values to configure the execution provider.
-   * \param[in] num_keys Number of execution provide options to add.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.22.
-   */
-  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* session_options,
-                  _In_ OrtEnv* env, _In_ const char* ep_name,
-                  _In_reads_(num_op_options) const char* const* ep_option_keys,
-                  _In_reads_(num_op_options) const char* const* ep_option_vals,
-                  size_t num_ep_options);
-
-  /** \brief Get the hardware device type.
-   *
-   * \param[in] device The OrtHardwareDevice instance to query.
-   * \return The hardware device type.
-   *
-   * \since Version 1.22.
-   */
-  OrtHardwareDeviceType(ORT_API_CALL* HardwareDevice_Type)(_In_ const OrtHardwareDevice* device);
-
-  /** \brief Get the hardware device's vendor identifier.
-   *
-   * \param[in] device The OrtHardwareDevice instance to query.
-   * \return The hardware device vendor identifier.
-   *
-   * \since Version 1.22.
-   */
-  int32_t(ORT_API_CALL* HardwareDevice_VendorId)(_In_ const OrtHardwareDevice* device);
-
-  /** \brief Get the hardware device's vendor name.
-   *
-   * \param[in] device The OrtHardwareDevice instance to query.
-   * \return The hardware device vendor name.
-   *
-   * \since Version 1.22.
-   */
-  const char*(ORT_API_CALL* HardwareDevice_Vendor)(_In_ const OrtHardwareDevice* device);
-
-  /** \brief Get the hardware device's unique identifier.
-   *
-   * \param[in]
-   * \param[out]
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.22.
-   */
-  // ??? does the user care about the 'bus' part or could this just be HardwareDevice_Id?
-  int32_t(ORT_API_CALL* HardwareDevice_BusId)(_In_ const OrtHardwareDevice* device);
-
-  /** \brief Get hardware device metadata.
-   *
-   * \param[in] device The OrtHardwareDevice instance to query.
-   * \return An OrtKeyValuePairs instance containing the metadata for the device.
-   *         Note: ORT owns the instance so the user must not call ReleaseKeyValuePairs with it.
-   *
-   * \since Version 1.22.
-   */
-  const OrtKeyValuePairs*(ORT_API_CALL* HardwareDevice_Metadata)(_In_ const OrtHardwareDevice* device);
-
-  /** \brief Get the execution provider name.
-   *
-   * \param[in] ep_device The OrtEpDevice instance to query.
-   * \return The execution provider name.
-   *
-   * \since Version 1.22.
-   */
-  const char*(ORT_API_CALL* EpDevice_EpName)(_In_ const OrtEpDevice* ep_device);
-
-  /** \brief Get the execution provider vendor name.
-   *
-   * \param[in] ep_device The OrtEpDevice instance to query.
-   * \return The execution provider vendor name.
-   *
-   * \since Version 1.22.
-   */
-  const char*(ORT_API_CALL* EpDevice_EpVendor)(_In_ const OrtEpDevice* ep_device);
-
-  /** \brief Get the metadata for the OrtEpDevice.
-   *
-   * \param[in] ep_device The OrtEpDevice instance to query.
-   * \return An OrtKeyValuePairs instance containing the metadata for the device.
-   *
-   * \since Version 1.22.
-   */
-  const OrtKeyValuePairs*(ORT_API_CALL* EpDevice_EpMetadata)(_In_ const OrtEpDevice* ep_device);
-
-  /** \brief Get the execution provider options for the OrtEpDevice.
-   *
-   * \param[in] ep_device The OrtEpDevice instance to query.
-   * \return An OrtKeyValuePairs instance containing the execution provider options for the device.
-   *
-   * \since Version 1.22.
-   */
-  const OrtKeyValuePairs*(ORT_API_CALL* EpDevice_EpOptions)(_In_ const OrtEpDevice* ep_device);
-
-  /** \brief Get the OrtHardwareDevice instance for the OrtEpDevice.
-   *
-   * \param[in] ep_device The OrtEpDevice instance to query.
-   * \return The OrtHardwareDevice instance for the device.
-   *
-   * \since Version 1.22.
-   */
-  const OrtHardwareDevice*(ORT_API_CALL* EpDevice_Device)(_In_ const OrtEpDevice* ep_device);
 
   //
   // OrtSessionOptions accessors
