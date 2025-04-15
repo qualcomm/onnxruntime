@@ -40,7 +40,7 @@ OrtStatus* EpFactoryInternal::CreateEp(const OrtHardwareDevice* const* /*devices
                                        size_t /*num_devices*/,
                                        const OrtSessionOptions* /*api_session_options*/,
                                        const OrtLogger* /*api_logger*/,
-                                       OrtEpApi::OrtEp** /*ep*/) {
+                                       OrtEp** /*ep*/) {
   ORT_THROW("Internal error. CreateIExecutionProvider should be used for EpFactoryInternal.");
 }
 
@@ -60,7 +60,7 @@ OrtStatus* EpFactoryInternal::CreateIExecutionProvider(const OrtHardwareDevice* 
   return nullptr;
 }
 
-void EpFactoryInternal::ReleaseEp(OrtEpApi::OrtEp* /*ep*/) {
+void EpFactoryInternal::ReleaseEp(OrtEp* /*ep*/) {
   // we never create an OrtEp so we should never be trying to release one
   ORT_THROW("Internal error. No ReleaseEp call is required for EpFactoryInternal.");
 }

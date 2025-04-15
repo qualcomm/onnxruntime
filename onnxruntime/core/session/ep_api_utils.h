@@ -8,15 +8,15 @@ namespace onnxruntime {
 // used by EpFactoryInternal and EpFactoryProviderBridge.
 template <typename TFactory>
 struct ForwardToFactory {
-  static const char* GetFactoryName(const OrtEpApi::OrtEpFactory* this_ptr) {
+  static const char* GetFactoryName(const OrtEpFactory* this_ptr) {
     return static_cast<const TFactory*>(this_ptr)->GetName();
   }
 
-  static const char* GetVendor(const OrtEpApi::OrtEpFactory* this_ptr) {
+  static const char* GetVendor(const OrtEpFactory* this_ptr) {
     return static_cast<const TFactory*>(this_ptr)->GetVendor();
   }
 
-  static bool GetDeviceInfoIfSupported(const OrtEpApi::OrtEpFactory* this_ptr,
+  static bool GetDeviceInfoIfSupported(const OrtEpFactory* this_ptr,
                                        const OrtHardwareDevice* device,
                                        OrtKeyValuePairs** ep_device_metadata,
                                        OrtKeyValuePairs** ep_options_for_device) {
@@ -24,18 +24,18 @@ struct ForwardToFactory {
                                                                             ep_options_for_device);
   }
 
-  static OrtStatus* CreateEp(OrtEpApi::OrtEpFactory* this_ptr,
+  static OrtStatus* CreateEp(OrtEpFactory* this_ptr,
                              const OrtHardwareDevice* const* devices,
                              const OrtKeyValuePairs* const* ep_metadata_pairs,
                              size_t num_devices,
                              const OrtSessionOptions* session_options,
                              const OrtLogger* logger,
-                             OrtEpApi::OrtEp** ep) {
+                             OrtEp** ep) {
     return static_cast<TFactory*>(this_ptr)->CreateEp(devices, ep_metadata_pairs, num_devices,
                                                       session_options, logger, ep);
   }
 
-  static void ReleaseEp(OrtEpApi::OrtEpFactory* this_ptr, OrtEpApi::OrtEp* ep) {
+  static void ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) {
     static_cast<TFactory*>(this_ptr)->ReleaseEp(ep);
   }
 };

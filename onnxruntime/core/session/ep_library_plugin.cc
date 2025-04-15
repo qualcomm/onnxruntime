@@ -15,12 +15,12 @@ Status EpLibraryPlugin::Load() {
     if (factories_.empty()) {
       ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(library_path_, false, &handle_));
 
-      OrtEpApi::CreateEpFactoriesFn create_fn;
+      CreateEpApiFactoriesFn create_fn;
       ORT_RETURN_IF_ERROR(
           Env::Default().GetSymbolFromLibrary(handle_, "CreateEpFactories", reinterpret_cast<void**>(&create_fn)));
 
       // allocate buffer for EP to add factories to. library can add up to 4 factories.
-      std::vector<OrtEpApi::OrtEpFactory*> factories{4, nullptr};
+      std::vector<OrtEpFactory*> factories{4, nullptr};
 
       size_t num_factories = 0;
       OrtStatus* ort_status = create_fn(registration_name_.c_str(), OrtGetApiBase(),
@@ -53,7 +53,7 @@ Status EpLibraryPlugin::Unload() {
   if (handle_) {
     if (!factories_.empty()) {
       try {
-        OrtEpApi::ReleaseEpFactoryFn release_fn;
+        ReleaseEpApiFactoryFn release_fn;
         ORT_RETURN_IF_ERROR(
             Env::Default().GetSymbolFromLibrary(handle_, "ReleaseEpFactory", reinterpret_cast<void**>(&release_fn)));
 

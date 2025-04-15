@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <algorithm>
 #include <string>
+#include <vector>
 #include <unordered_map>
 
 struct OrtKeyValuePairs {

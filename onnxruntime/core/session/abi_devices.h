@@ -58,5 +58,5 @@ struct OrtEpDevice {
   OrtKeyValuePairs ep_metadata;
   OrtKeyValuePairs ep_options;
 
-  OrtEpApi::OrtEpFactory* ep_factory;
+  OrtEpFactory* ep_factory;
 };

@@ -68,6 +68,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::SessionOptions_GetConfigOption,
     &OrtExecutionProviderApi::SessionOptions_GetOptimizationLevel,
 };
+}  // namespace OrtExecutionProviderApi
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
 static_assert(offsetof(OrtEpApi, SessionOptions_GetOptimizationLevel) / sizeof(void*) == 2,
@@ -76,5 +77,3 @@ static_assert(offsetof(OrtEpApi, SessionOptions_GetOptimizationLevel) / sizeof(v
 ORT_API(const OrtEpApi*, OrtExecutionProviderApi::GetEpApi) {
   return &ort_ep_api;
 }
-
-}  // namespace OrtExecutionProviderApi

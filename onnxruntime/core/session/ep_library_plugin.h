@@ -21,7 +21,7 @@ struct EpLibraryPlugin : EpLibrary {
 
   Status Load() override;
 
-  const std::vector<OrtEpApi::OrtEpFactory*>& GetFactories() override {
+  const std::vector<OrtEpFactory*>& GetFactories() override {
     return factories_;
   }
 
@@ -34,6 +34,6 @@ struct EpLibraryPlugin : EpLibrary {
   const std::string registration_name_;
   const std::filesystem::path library_path_;
   void* handle_{};
-  std::vector<OrtEpApi::OrtEpFactory*> factories_{};
+  std::vector<OrtEpFactory*> factories_{};
 };
 }  // namespace onnxruntime

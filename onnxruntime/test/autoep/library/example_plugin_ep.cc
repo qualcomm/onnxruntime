@@ -5,11 +5,6 @@
 #include <string>
 #include <vector>
 
-#include <gsl/span>
-
-using OrtEpFactory = OrtEpApi::OrtEpFactory;
-using OrtEp = OrtEpApi::OrtEp;
-
 #define RETURN_IF_ERROR(fn)   \
   do {                        \
     OrtStatus* status = (fn); \
@@ -33,7 +28,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
                                             ("ExampleEp has been created with name " + name_).c_str(),
                                             ORT_FILE, __LINE__, __FUNCTION__);
     // ignore status for now
-    (void*)status;
+    (void)status;
   }
 
   ~ExampleEp() {
@@ -82,7 +77,7 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
       return true;
     }
 
-    return nullptr;
+    return false;
   }
 
   static OrtStatus* CreateEpImpl(OrtEpFactory* this_ptr,

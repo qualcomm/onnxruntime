@@ -108,7 +108,7 @@ class Environment {
   Status UnregisterExecutionProviderLibrary(const std::string& registration_name);
 
   // convert an OrtEpFactory* to EpFactoryInternal* if possible.
-  EpFactoryInternal* GetEpFactoryInternal(OrtEpApi::OrtEpFactory* factory) const {
+  EpFactoryInternal* GetEpFactoryInternal(OrtEpFactory* factory) const {
     // we're comparing pointers so the reinterpret_cast should be safe
     auto it = internal_ep_factories_.find(reinterpret_cast<EpFactoryInternal*>(factory));
     return it != internal_ep_factories_.end() ? *it : nullptr;
@@ -164,7 +164,7 @@ class Environment {
   std::unordered_map<std::string, std::unique_ptr<EpInfo>> ep_libraries_;
 
   // combined set of OrtEpDevices for all registered OrtEpFactory instances
-  // std::vector so we can use directly in OrtEpApi::GetEpDevices.
+  // std::vector so we can use directly in GetEpDevices.
   // inefficient when EPs are unregistered but that is not expected to be a common operation.
   std::vector<const OrtEpDevice*> execution_devices_;
 

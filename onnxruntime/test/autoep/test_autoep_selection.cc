@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <filesystem>
 #include <absl/base/config.h>
 #include <gtest/gtest.h>
 
@@ -35,13 +36,14 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
   if (library_path) {
     // use EP name as registration name for now. there's some hardcoded matching of names to special case
     // the provider bridge EPs short term.
-    Ort::GetApi().RegisterExecutionProviderLibrary(env, ep_to_select.c_str(),
-                                                   library_path->c_str());
+    ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(env, ep_to_select.c_str(),
+                                                                       library_path->c_str()));
   }
 
   if (auto_select) {
     // manually specify EP to select for now
-    Ort::GetApi().AddSessionConfigEntry(session_options, "test.ep_to_select", ep_to_select.c_str());
+    ASSERT_ORTSTATUS_OK(Ort::GetApi().AddSessionConfigEntry(session_options, "test.ep_to_select",
+                                                            ep_to_select.c_str()));
 
     const std::string option_prefix = ProviderOptionsUtils::GetProviderOptionPrefix(ep_to_select);
     for (const auto& [key, value] : provider_options.entries) {
@@ -49,9 +51,9 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
       session_options.AddConfigEntry((option_prefix + key).c_str(), value.c_str());
     }
   } else {
-    Ort::GetApi().SessionOptionsAppendExecutionProvider_V2(
+    ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsAppendExecutionProvider_V2(
         session_options, env, ep_to_select.c_str(),
-        provider_options.keys.data(), provider_options.values.data(), provider_options.entries.size());
+        provider_options.keys.data(), provider_options.values.data(), provider_options.entries.size()));
   }
 
   // if session creation passes, model loads fine

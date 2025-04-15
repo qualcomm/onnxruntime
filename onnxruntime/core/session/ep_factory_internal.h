@@ -14,7 +14,7 @@ namespace onnxruntime {
 struct EpLibraryInternal;
 struct SessionOptions;
 
-class EpFactoryInternal : public OrtEpApi::OrtEpFactory {
+class EpFactoryInternal : public OrtEpFactory {
  public:
   using IsSupportedFunc = std::function<bool(const OrtHardwareDevice* device,
                                              OrtKeyValuePairs** ep_metadata,
@@ -38,7 +38,7 @@ class EpFactoryInternal : public OrtEpApi::OrtEpFactory {
                       _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
                       _In_ size_t num_devices,
                       _In_ const OrtSessionOptions* session_options,
-                      _In_ const OrtLogger* logger, _Out_ OrtEpApi::OrtEp** ep);
+                      _In_ const OrtLogger* logger, _Out_ OrtEp** ep);
 
   // same input args as CreateEp in case we need something from device or ep_metadata_pairs in the future.
   OrtStatus* CreateIExecutionProvider(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
@@ -48,7 +48,7 @@ class EpFactoryInternal : public OrtEpApi::OrtEpFactory {
                                       _In_ const OrtLogger* logger, _Out_ std::unique_ptr<IExecutionProvider>& ep);
 
   // Function ORT calls to release an EP instance.
-  void ReleaseEp(OrtEpApi::OrtEp* ep);
+  void ReleaseEp(OrtEp* ep);
 
  private:
   const std::string ep_name_;                // EP name library was registered with

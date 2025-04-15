@@ -15,7 +15,7 @@
 struct OrtSessionOptions {
   onnxruntime::SessionOptions value;
 
-  // This is only set when we provide an OrtSessionOptions to OrtEpApi::OrtEpFactory::CreateEp.
+  // This is only set when we provide an OrtSessionOptions to OrtEpFactory::CreateEp.
   // In that scenario the InferenceSession has been created with the user provided OrtSessionOptions,
   // so InferenceSession::GetSessionOptions() is the source of truth and existing_value is set to that.
   // When set, `value` should be ignored.

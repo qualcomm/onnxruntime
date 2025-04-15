@@ -67,7 +67,7 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
         return ToStatus(status);
       }
     } else {
-      OrtEpApi::OrtEp* api_ep = nullptr;
+      OrtEp* api_ep = nullptr;
       auto status = ep_device->ep_factory->CreateEp(
           ep_device->ep_factory, devices.data(), ep_metadata.data(), devices.size(),
           &ort_so, &api_session_logger, &api_ep);
