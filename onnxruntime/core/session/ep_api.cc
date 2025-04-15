@@ -29,7 +29,8 @@ ORT_API_STATUS_IMPL(SessionOptions_GetConfigOptions, _In_ const OrtSessionOption
 }
 
 // Get ConfigOptions by key. Returns null in value if key not found (vs pointer to empty string if found).
-ORT_API(const char*, SessionOptions_GetConfigOption, _In_ const OrtSessionOptions* session_options, _In_ const char* key) {
+ORT_API(const char*, SessionOptions_GetConfigOption, _In_ const OrtSessionOptions* session_options,
+        _In_ const char* key) {
   // prefer existing_value if set (which should only be the case inside CreateEp)
   const auto* value = session_options->existing_value.value_or(&session_options->value);
   const auto& entries = value->config_options.configurations;

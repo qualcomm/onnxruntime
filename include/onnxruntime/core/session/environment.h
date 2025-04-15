@@ -154,7 +154,7 @@ class Environment {
 
     std::unique_ptr<EpLibrary> library;
     std::vector<std::unique_ptr<OrtEpDevice>> execution_devices;
-    std::vector<EpFactoryInternal*> internal_factories;  // factories that provide IExecutionProvider directly
+    std::vector<EpFactoryInternal*> internal_factories;  // factories that can create IExecutionProvider instances
 
    private:
     EpInfo() = default;
@@ -165,7 +165,7 @@ class Environment {
 
   // combined set of OrtEpDevices for all registered OrtEpFactory instances
   // std::vector so we can use directly in OrtEpApi::GetEpDevices.
-  // inefficient when EPs are unregistered but that it not expected to be a common operation.
+  // inefficient when EPs are unregistered but that is not expected to be a common operation.
   std::vector<const OrtEpDevice*> execution_devices_;
 
   // lookup set for internal EPs so we can create an IExecutionProvider directly

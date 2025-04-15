@@ -1803,7 +1803,6 @@ endif()
 # We need a shared lib build to use that as a dependency for the test library
 if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
   onnxruntime_add_shared_library_module(example_plugin_ep_library
-                                        ${TEST_SRC_DIR}/autoep/library/example_plugin_ep.h
                                         ${TEST_SRC_DIR}/autoep/library/example_plugin_ep.cc)
   target_include_directories(example_plugin_ep_library PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
   target_link_libraries(  example_plugin_ep_library PRIVATE onnxruntime)

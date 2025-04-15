@@ -2533,7 +2533,7 @@ ORT_API(int32_t, OrtApis::HardwareDevice_BusId, _In_ const OrtHardwareDevice* de
 }
 
 ORT_API(const OrtKeyValuePairs*, OrtApis::HardwareDevice_Metadata, _In_ const OrtHardwareDevice* ep_device) {
-  return &ep_device->properties;
+  return &ep_device->metadata;
 }
 
 ORT_API(const char*, OrtApis::EpDevice_EpName, _In_ const OrtEpDevice* ep_device) {

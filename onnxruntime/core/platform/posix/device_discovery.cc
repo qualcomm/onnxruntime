@@ -4,8 +4,8 @@
 #include "core/platform/device_discovery.h"
 
 namespace onnxruntime {
-std::unordered_set<HardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
-  std::unordered_set<HardwareDevice> devices;
+std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
+  std::unordered_set<OrtHardwareDevice> devices;
   // get CPU devices
 
   // get GPU devices

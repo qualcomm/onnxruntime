@@ -159,6 +159,9 @@ if(APPLE)
   target_link_libraries(onnxruntime_common PRIVATE "-framework Foundation")
 endif()
 
+if(MSVC)
+  target_link_libraries(onnxruntime_common PRIVATE dxcore.lib)
+endif()
 
 if(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
@@ -207,7 +210,6 @@ elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 endif()
 
-
 if (RISCV64 OR ARM64 OR ARM OR X86 OR X64 OR X86_64)
     # Link cpuinfo if supported
     # Using it mainly in ARM with Android.
@@ -225,9 +227,4 @@ if (NOT onnxruntime_BUILD_SHARED_LIB)
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
             FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-endif()
-
-if(WIN32)
-  # ??? is this safe on all windows variants?
-  target_link_libraries(onnxruntime_common PRIVATE dxcore.lib)
 endif()

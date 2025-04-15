@@ -33,14 +33,14 @@ class EpFactoryInternal : public OrtEpApi::OrtEpFactory {
                                 _Out_ OrtKeyValuePairs** ep_device_metadata,
                                 _Out_ OrtKeyValuePairs** ep_options_for_device) const;
 
-  // we don't implement this. code should check
+  // we don't implement this. CreateIExecutionProvider should be used.
   OrtStatus* CreateEp(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
                       _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
                       _In_ size_t num_devices,
                       _In_ const OrtSessionOptions* session_options,
                       _In_ const OrtLogger* logger, _Out_ OrtEpApi::OrtEp** ep);
 
-  // we implement this. provide the same args in case we need something from device or ep_metadata_pairs in the future.
+  // same input args as CreateEp in case we need something from device or ep_metadata_pairs in the future.
   OrtStatus* CreateIExecutionProvider(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
                                       _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
                                       _In_ size_t num_devices,

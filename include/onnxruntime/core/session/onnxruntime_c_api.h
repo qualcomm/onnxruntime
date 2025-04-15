@@ -4977,6 +4977,7 @@ struct OrtApi {
    */
 
   void(ORT_API_CALL* AddKeyValuePair)(_In_ OrtKeyValuePairs* kvps, _In_ const char* key, _In_ const char* value);
+
   /** \brief Get the value associated with a key in the OrtKeyValuePairs instance.
    *
    * \param[in] kvps OrtKeyValuePairs instance.
@@ -4988,7 +4989,7 @@ struct OrtApi {
    */
   const char*(ORT_API_CALL* GetKeyValue)(_In_ const OrtKeyValuePairs* kvps, _In_ const char* key);
 
-  /** \brief Get the key-value pairs from the OrtKeyValuePairs instance.
+  /** \brief Get all the key-value pairs from the OrtKeyValuePairs instance.
    *
    * \param[in] kvps OrtKeyValuePairs instance.
    * \param[out] keys Array of keys from `kvps`.
@@ -5018,9 +5019,10 @@ struct OrtApi {
    */
   ORT_CLASS_RELEASE(KeyValuePairs);
 
-  /** \brief Register an execution provider library with ONNX Runtime.
+  /** \brief Register an execution provider library with ORT.
    *
    * The library must export 'CreateEpFactories' and 'ReleaseEpFactory' functions.
+   * See OrtEpApi for more details.
    *
    * \param[in] env The OrtEnv instance to register the library in.
    * \param[in] registration_name The name to register the execution provider library under.
@@ -5033,7 +5035,7 @@ struct OrtApi {
   ORT_API2_STATUS(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name,
                   _In_ const ORTCHAR_T* path);
 
-  /** \brief Unregister an execution provider library with ONNX Runtime.
+  /** \brief Unregister an execution provider library with ORT.
    *
    * ORT will call ReleaseEpFactory for all factories created by the library, and unload the library.
    *
@@ -5067,7 +5069,7 @@ struct OrtApi {
   /** \brief Append execution provider to the session options by name.
    *
    * \param[in] session_options Session options to add execution provider to.
-   * \param[in] env Environment that execution providers was registered with
+   * \param[in] env Environment that execution providers were registered with.
    * \param[in] ep_name Execution provider to add. Use GetEpDevices to discover the available execution providers and
    *                    the devices they will use.
    * \param[in] ep_option_keys Optional keys to configure the execution provider.
@@ -5105,7 +5107,7 @@ struct OrtApi {
   /** \brief Get the hardware device's vendor name.
    *
    * \param[in] device The OrtHardwareDevice instance to query.
-   * \return The hardware device vendor name.
+   * \return The hardware device's vendor name.
    *
    * \since Version 1.22.
    */
@@ -5142,10 +5144,10 @@ struct OrtApi {
    */
   const char*(ORT_API_CALL* EpDevice_EpName)(_In_ const OrtEpDevice* ep_device);
 
-  /** \brief Get the execution provider vendor name.
+  /** \brief Get the execution provider's vendor name.
    *
    * \param[in] ep_device The OrtEpDevice instance to query.
-   * \return The execution provider vendor name.
+   * \return The execution provider's vendor name.
    *
    * \since Version 1.22.
    */
@@ -5178,7 +5180,7 @@ struct OrtApi {
    */
   const OrtHardwareDevice*(ORT_API_CALL* EpDevice_Device)(_In_ const OrtEpDevice* ep_device);
 
-  /** \brief Get the API for dynamically creating execution providers.
+  /** \brief Get the API for implementing plugin execution providers.
    *
    * \return Execution Provider API struct
    *
@@ -5856,9 +5858,7 @@ struct OrtCompileApi {
 };
 
 /**
- * \brief The OrtEpApi struct provides functions to dynamically create execution providers.
- *
- * Authors of an execution provider library use types and functions in the OrtEpApi to implement an execution provider.
+ * \brief The OrtEpApi struct provides functions to implement plugin execution providers.
  *
  * Execution providers are used to offload computation to hardware accelerators.
  * See \href https://onnxruntime.ai/docs/execution_providers for details.
@@ -5934,10 +5934,9 @@ struct OrtEpApi {
      * \param[in] this_ptr The OrtEpFactory instance.
      * \param[in] device The OrtHardwareDevice instance.
      * \param[out] ep_metadata Optional OrtKeyValuePairs instance for execution provider metadata that may be used
-     *                         during execution provider selection or CreateEp.
+     *                         during execution provider selection and/or CreateEp.
      * \param[out] ep_options Optional OrtKeyValuePairs instance for execution provider options that will be added
      *                        to the Session configuration options if the execution provider is selected.
-     *                        Option keys should be prefixed with 'ep.<ep name>.'.
      * \return true if the factory can create an execution provider that uses `device`.
      *
      * \note ORT will take ownership or ep_metadata and/or ep_options if they are not null.
@@ -5961,7 +5960,7 @@ struct OrtEpApi {
      * \param[in] session_options The OrtSessionOptions instance that contains the configuration options for the
      *                            session. This will include ep_options from GetDeviceInfoIfSupported as well as any
      *                            user provided overrides.
-     *                            Execution provider specific options will have a prefix of 'ep.<ep name>.'.
+     *                            Execution provider options will have been added with a prefix of 'ep.<ep name>.'.
      * \param[in] logger The OrtLogger instance for the session that the execution provider should use for logging.
      * \param[out] ep The OrtEp instance created by the factory.
      *
@@ -5998,7 +5997,7 @@ struct OrtEpApi {
    *                          pre-allocated array.
    *                          i.e. usage is `factories[0] = new MyEpFactory();`
    * \param[in] max_factories The maximum number of OrtEpFactory instances that can be added to `factories`.
-   * \param[out] num_factories The number of OrtEpFactory instances created by the factory.
+   * \param[out] num_factories The number of OrtEpFactory instances created by the factory and added to `factories`.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

@@ -24,8 +24,7 @@ struct EpLibraryProviderBridge : EpLibrary {
     return factory_ptrs_;
   }
 
-  // Provider bridge EPs are 'internal' as they can provide an IExecutionProvider instance directly
-  // there's only ever one currently
+  // Provider bridge EPs are 'internal' as they can provide an IExecutionProvider instance directly.
   const std::vector<EpFactoryInternal*>& GetInternalFactories() {
     return internal_factory_ptrs_;
   }

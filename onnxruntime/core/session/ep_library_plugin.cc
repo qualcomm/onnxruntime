@@ -8,6 +8,8 @@
 
 namespace onnxruntime {
 Status EpLibraryPlugin::Load() {
+  auto status = Status::OK();
+
   std::lock_guard<std::mutex> lock{mutex_};
   try {
     if (factories_.empty()) {
@@ -17,14 +19,14 @@ Status EpLibraryPlugin::Load() {
       ORT_RETURN_IF_ERROR(
           Env::Default().GetSymbolFromLibrary(handle_, "CreateEpFactories", reinterpret_cast<void**>(&create_fn)));
 
-      // allocate buffer for EP to add factories to.
+      // allocate buffer for EP to add factories to. library can add up to 4 factories.
       std::vector<OrtEpApi::OrtEpFactory*> factories{4, nullptr};
 
       size_t num_factories = 0;
-      OrtStatus* status = create_fn(registration_name_.c_str(), OrtGetApiBase(), factories.data(), factories.size(),
-                                    &num_factories);
-      if (status != nullptr) {
-        return ToStatus(status);
+      OrtStatus* ort_status = create_fn(registration_name_.c_str(), OrtGetApiBase(),
+                                        factories.data(), factories.size(), &num_factories);
+      if (ort_status != nullptr) {
+        return ToStatus(ort_status);
       }
 
       for (size_t i = 0; i < num_factories; ++i) {
@@ -33,8 +35,8 @@ Status EpLibraryPlugin::Load() {
     }
   } catch (const std::exception& ex) {
     // TODO: Add logging of exception
-    auto status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load execution provider library: ", library_path_,
-                                  " with error: ", ex.what());
+    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load execution provider library: ", library_path_,
+                             " with error: ", ex.what());
     auto unload_status = Unload();  // If anything fails we unload the library
     if (!unload_status.IsOK()) {
       LOGS_DEFAULT(ERROR) << "Failed to unload execution provider library: " << library_path_ << " with error: "
@@ -42,12 +44,12 @@ Status EpLibraryPlugin::Load() {
     }
   }
 
-  return Status::OK();
+  return status;
 }
 
 Status EpLibraryPlugin::Unload() {
   // Call ReleaseEpFactory for all factories and unload the library.
-  // Current implementation assume any error is permanent so does not leave pieces around to re-attempt Unload.
+  // Current implementation assumes any error is permanent so does not leave pieces around to re-attempt Unload.
   if (handle_) {
     if (!factories_.empty()) {
       try {

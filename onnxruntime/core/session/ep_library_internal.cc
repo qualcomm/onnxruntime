@@ -50,9 +50,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
                                OrtKeyValuePairs** /*ep_options*/) -> bool {
     if (device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
       // does anything need to be added here?
-      // - can we get the device id and set in ep_options?
-      //   - is that 'Bus number' in windows? is that already in device->bus_id?
-      //   - or should that be in ep_metadata so we can use in the call to DMLProviderFactoryCreator::Create?
+      // is it possible to get the PCI bus number from OrtHardwareDevice? Is that 1:1 with 'device_id'
       return true;
     }
 

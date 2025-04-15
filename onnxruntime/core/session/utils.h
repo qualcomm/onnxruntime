@@ -5,10 +5,6 @@
 
 #include <string_view>
 #include "core/common/common.h"
-#include "core/common/status.h"
-
-#include "core/session/abi_devices.h"
-#include "core/session/environment.h"
 #include "core/session/onnxruntime_c_api.h"
 
 onnxruntime::common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, char* out, size_t* size);

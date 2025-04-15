@@ -31,12 +31,17 @@ struct EpLibraryInternal : EpLibrary {
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryInternal);
 
+  // create instances for all internal EPs included in this build.
   static std::vector<std::unique_ptr<EpLibraryInternal>> CreateInternalEps();
 
  private:
   static std::unique_ptr<EpLibraryInternal> CreateCpuEp();
+#if defined(USE_DML)
   static std::unique_ptr<EpLibraryInternal> CreateDmlEp();
+#endif
+#if defined(USE_WEBGPU)
   static std::unique_ptr<EpLibraryInternal> CreateWebGpuEp();
+#endif
 
   std::unique_ptr<EpFactoryInternal> factory_;         // all internal EPs register a single factory currently
   std::vector<OrtEpApi::OrtEpFactory*> factory_ptrs_;  // for convenience

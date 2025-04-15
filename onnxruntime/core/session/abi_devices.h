@@ -8,28 +8,27 @@
 
 #include "core/common/hash_combine.h"
 #include "core/session/abi_key_value_pairs.h"
-#include "core/session/onnxruntime_c_api.h"  // OrtHardwareDeviceType and OrtEpApi::OrtEpFactory
+#include "core/session/onnxruntime_c_api.h"
 
 struct OrtHardwareDevice {
-  // we always need to check vendor and type so make those mandatory properties
   OrtHardwareDeviceType type;
   int32_t vendor_id;   // GPU has id
   std::string vendor;  // CPU uses string
   int32_t bus_id;
-  OrtKeyValuePairs properties;
+  OrtKeyValuePairs metadata;
 
   static size_t Hash(const OrtHardwareDevice& hd) {
-    auto h = std::hash<int>()(hd.vendor_id);  // start with something less trivial than the type
+    auto h = std::hash<int>()(hd.bus_id);  // start with a field that always has a non-trivial value
+    onnxruntime::HashCombine(hd.vendor_id, h);
     onnxruntime::HashCombine(hd.vendor, h);
-    onnxruntime::HashCombine(hd.bus_id, h);
     onnxruntime::HashCombine(hd.type, h);
-    // skip the properties for now
+    // skip the metadata for now
 
     return h;
   }
 };
 
-// This is to make OrtDevice a valid key in hash tables
+// This is to make OrtHardwareDevice a valid key in hash tables
 namespace std {
 template <>
 struct hash<OrtHardwareDevice> {
@@ -45,8 +44,8 @@ struct equal_to<OrtHardwareDevice> {
            lhs.vendor_id == rhs.vendor_id &&
            lhs.vendor == rhs.vendor &&
            lhs.bus_id == rhs.bus_id &&
-           lhs.properties.keys == rhs.properties.keys &&
-           lhs.properties.values == rhs.properties.values;
+           lhs.metadata.keys == rhs.metadata.keys &&
+           lhs.metadata.values == rhs.metadata.values;
   }
 };
 }  // namespace std

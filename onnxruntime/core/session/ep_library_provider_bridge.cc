@@ -13,7 +13,7 @@
 namespace onnxruntime {
 
 std::unique_ptr<EpFactoryInternal> EpLibraryProviderBridge::CreateCudaEpFactory(Provider& provider) {
-  // Use the name that SessionOptionsAppendExecutionProvider uses to identify the EP as that matches the
+  // Using the name that SessionOptionsAppendExecutionProvider uses to identify the EP as that matches the
   // expected name in the configuration options. must be static to be valid for the lambdas
   static const std::string ep_name = "CUDA";
 

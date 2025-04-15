@@ -409,7 +409,7 @@ Status Environment::CreateAndRegisterInternalEps() {
 }
 
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name, const ORTCHAR_T* lib_path) {
-  // need to special case provider bridge EPs. using the current EP name.
+  // need to special case provider bridge EPs.
   if (registration_name == "CUDA") {
     auto ep_library = std::make_unique<EpLibraryProviderBridge>(registration_name, lib_path);
     // we do a std::move in the function call so need a valid pointer for the args after the move
@@ -448,7 +448,7 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
       }
     }
 
-    ep_info.reset();  // explicit but only so it's easier to debug an issue by stepping into this.
+    ep_info.reset();
   } catch (const std::exception& ex) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unregister EP library: ", ep_name, " with error: ", ex.what());
   }
@@ -488,9 +488,11 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
         ed->ep_name = factory.GetName(&factory);
         ed->ep_vendor = factory.GetVendor(&factory);
         ed->device = &device;
+
         if (ep_metadata) {
           ed->ep_metadata = *ep_metadata;
         }
+
         if (ep_options) {
           ed->ep_options = *ep_options;
         }
@@ -504,11 +506,6 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
 
   return Status::OK();
 }
-
-// OrtEpApi::OrtEpFactory& GetFactory() {
-//   // Load must have been successful to get to here so this will should always be valid
-//   return *library->GetFactory();
-// }
 
 Environment::EpInfo::~EpInfo() {
   execution_devices.clear();

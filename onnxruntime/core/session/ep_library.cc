@@ -7,8 +7,11 @@
 #include "core/framework/session_options.h"
 
 namespace onnxruntime {
-// many EPs parse the options from prior to them being added to session options.
-// to support that we need to extract the EP specific options from session_options and remove the prefix.
+// Prior to addition to SessionOptions the EP options do not have a prefix.
+// They are prefixed with 'ep.<ep_name>.' when added to SessionOptions.
+//
+// Use this function to get the options without the prefix from SessionOptions.
+// Required by the option parsing for multiple existing EPs.
 ProviderOptions EpLibrary::GetOptionsFromSessionOptions(const std::string& ep_name,
                                                         const SessionOptions& session_options) {
   const std::string option_prefix = ProviderOptionsUtils::GetProviderOptionPrefix(ep_name);

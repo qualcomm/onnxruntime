@@ -18,8 +18,8 @@
 
 using namespace onnxruntime;
 namespace {
-// Select execution providers based on the device policy and available devices and add to session
-Status AutoSelectEPs(const Environment& env, InferenceSession& sess, const std::string& ep_to_select) {
+// temporary implementation for testing. EP to 'select' is specified in config option
+Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, const std::string& ep_to_select) {
   const auto& execution_devices = env.GetOrtEpDevices();
 
   // Create OrtSessionOptions for the CreateEp call.
@@ -31,13 +31,12 @@ Status AutoSelectEPs(const Environment& env, InferenceSession& sess, const std::
   const auto& session_logger = sess.GetLogger();
   const OrtLogger& api_session_logger = *session_logger->ToExternal();
 
-  // CPU
   for (const auto* ep_device : execution_devices) {
     if (ep_device->ep_name != ep_to_select) {
       continue;
     }
 
-    // get internal factory if available
+    // get internal factory if available.
     EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_device->ep_factory);
 
     // in the real implementation multiple devices can be assigned to an EP
@@ -59,7 +58,7 @@ Status AutoSelectEPs(const Environment& env, InferenceSession& sess, const std::
     std::unique_ptr<IExecutionProvider> ep;
 
     if (internal_factory) {
-      // this is a factory we created and registered
+      // this is a factory we created and registered. internal or provider bridge EP.
       OrtStatus* status = internal_factory->CreateIExecutionProvider(
           devices.data(), ep_metadata.data(), devices.size(),
           &ort_so, &api_session_logger, ep);
@@ -69,7 +68,6 @@ Status AutoSelectEPs(const Environment& env, InferenceSession& sess, const std::
       }
     } else {
       OrtEpApi::OrtEp* api_ep = nullptr;
-      // add the ep_options to session options but leave any existing entries (user provided overrides) untouched.
       auto status = ep_device->ep_factory->CreateEp(
           ep_device->ep_factory, devices.data(), ep_metadata.data(), devices.size(),
           &ort_so, &api_session_logger, &api_ep);
@@ -77,9 +75,9 @@ Status AutoSelectEPs(const Environment& env, InferenceSession& sess, const std::
       if (status != nullptr) {
         return ToStatus(status);
       }
+
       // in the real setup we need an IExecutionProvider wrapper implementation that uses the OrtEp internally,
       // and we would add that IExecutionProvider to the InferenceSession.
-      // that wrapper would also be responsible for the ReleaseEp call so needs a factory pointer as well.
       ORT_NOT_IMPLEMENTED("IExecutionProvider that wraps OrtEp has not been implemented.");
     }
 
@@ -152,7 +150,7 @@ OrtStatus* CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
   // TEMPORARY for testing. Manually specify the EP to select.
   auto auto_select_ep_name = sess->GetSessionOptions().config_options.GetConfigEntry("test.ep_to_select");
   if (auto_select_ep_name) {
-    ORT_API_RETURN_IF_STATUS_NOT_OK(AutoSelectEPs(env->GetEnvironment(), *sess, *auto_select_ep_name));
+    ORT_API_RETURN_IF_STATUS_NOT_OK(TestAutoSelectEPsImpl(env->GetEnvironment(), *sess, *auto_select_ep_name));
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)

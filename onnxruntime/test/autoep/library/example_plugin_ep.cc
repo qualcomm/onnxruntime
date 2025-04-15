@@ -1,4 +1,3 @@
-#include "example_plugin_ep.h"
 #include "onnxruntime_cxx_api.h"
 
 #include <cassert>

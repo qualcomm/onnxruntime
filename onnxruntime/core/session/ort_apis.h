@@ -574,7 +574,6 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOpt
                     _In_reads_(num_op_options) const char* const* ep_option_vals,
                     size_t num_ep_options);
 
-// ??? Should these have 'Get' in the name in case we wanted to add public setters in the future?
 // OrtHardwareDevice accessors.
 ORT_API(OrtHardwareDeviceType, HardwareDevice_Type, _In_ const OrtHardwareDevice* device);
 ORT_API(int32_t, HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device);

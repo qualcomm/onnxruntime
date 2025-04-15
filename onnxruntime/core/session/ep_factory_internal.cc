@@ -20,7 +20,6 @@ EpFactoryInternal::EpFactoryInternal(const std::string& ep_name, const std::stri
       vendor_{vendor},
       is_supported_func_{std::move(is_supported_func)},
       create_func_{create_func} {
-  // Constructor implementation
   ort_version_supported = ORT_API_VERSION;
 
   OrtEpFactory::GetName = Forward::GetFactoryName;
@@ -53,8 +52,9 @@ OrtStatus* EpFactoryInternal::CreateIExecutionProvider(const OrtHardwareDevice* 
                                                        std::unique_ptr<IExecutionProvider>& ep) {
   if (num_devices != 1) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "EpFactoryInternal only supports one device at a time.");
+                                 "EpFactoryInternal currently only supports one device at a time.");
   }
+
   ep = create_func_(*session_options, *session_logger);
 
   return nullptr;
