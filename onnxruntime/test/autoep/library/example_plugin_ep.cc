@@ -15,7 +15,7 @@
 
 struct ApiPtrs {
   const OrtApi& ort_api;
-  const OrtEpApi& ep_api;
+  // const OrtEpApi& ep_api;  TODO: Add this when we flesh out the EP API.
 };
 
 struct ExampleEp : OrtEp, ApiPtrs {
@@ -127,11 +127,11 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
 OrtStatus* CreateEpFactories(const char* registration_name, const OrtApiBase* ort_api_base,
                              OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
-  const OrtEpApi* ep_api = ort_api->GetEpApi();
+  // const OrtEpApi* ep_api = ort_api->GetEpApi();
 
   // Factory could use registration_name or define its own EP name.
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<ExampleEpFactory>(registration_name,
-                                                                             ApiPtrs{*ort_api, *ep_api});
+                                                                             ApiPtrs{*ort_api});
 
   assert(max_factories > 1);  // we need at least one slot for the factory
   factories[0] = factory.release();

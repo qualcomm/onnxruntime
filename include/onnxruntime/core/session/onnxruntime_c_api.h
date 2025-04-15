@@ -698,99 +698,96 @@
  struct OrtCompileApi;
  typedef struct OrtCompileApi OrtCompileApi;
 
- struct OrtEpApi;
- typedef struct OrtEpApi OrtEpApi;
+/** \brief The helper interface to get the right version of OrtApi
+ *
+ * Get a pointer to this structure through ::OrtGetApiBase
+ */
+struct OrtApiBase {
+  /** \brief Get a pointer to the requested version of the ::OrtApi
+   *
+   * \param[in] version Must be ::ORT_API_VERSION
+   * \return The ::OrtApi for the version requested, nullptr will be returned if this version is unsupported, for example when using a runtime
+   *   older than the version created with this header file.
+   *
+   * One can call GetVersionString() to get the version of the Onnxruntime library for logging
+   * and error reporting purposes.
+   */
+  const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
 
- /** \brief The helper interface to get the right version of OrtApi
-  *
-  * Get a pointer to this structure through ::OrtGetApiBase
-  */
- struct OrtApiBase {
-   /** \brief Get a pointer to the requested version of the ::OrtApi
-    *
-    * \param[in] version Must be ::ORT_API_VERSION
-    * \return The ::OrtApi for the version requested, nullptr will be returned if this version is unsupported, for example when using a runtime
-    *   older than the version created with this header file.
-    *
-    * One can call GetVersionString() to get the version of the Onnxruntime library for logging
-    * and error reporting purposes.
-    */
-   const OrtApi*(ORT_API_CALL* GetApi)(uint32_t version)NO_EXCEPTION;
+  /** \brief Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
+   *
+   *  \return UTF-8 encoded version string. Do not deallocate the returned buffer.
+   */
+  const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;
+};
 
-   /** \brief Returns a null terminated string of the version of the Onnxruntime library (eg: "1.8.1")
-    *
-    *  \return UTF-8 encoded version string. Do not deallocate the returned buffer.
-    */
-   const char*(ORT_API_CALL* GetVersionString)(void)NO_EXCEPTION;
- };
+typedef struct OrtApiBase OrtApiBase;
 
- typedef struct OrtApiBase OrtApiBase;
+/** \brief The Onnxruntime library's entry point to access the C API
+ *
+ * Call this to get the a pointer to an ::OrtApiBase
+ */
+ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
 
- /** \brief The Onnxruntime library's entry point to access the C API
-  *
-  * Call this to get the a pointer to an ::OrtApiBase
-  */
- ORT_EXPORT const OrtApiBase* ORT_API_CALL OrtGetApiBase(void) NO_EXCEPTION;
+/** \brief Thread work loop function
+ *
+ * Onnxruntime will provide the working loop on custom thread creation
+ * Argument is an onnxruntime built-in type which will be provided when thread pool calls OrtCustomCreateThreadFn
+ */
+typedef void (*OrtThreadWorkerFn)(void* ort_worker_fn_param);
 
- /** \brief Thread work loop function
-  *
-  * Onnxruntime will provide the working loop on custom thread creation
-  * Argument is an onnxruntime built-in type which will be provided when thread pool calls OrtCustomCreateThreadFn
-  */
- typedef void (*OrtThreadWorkerFn)(void* ort_worker_fn_param);
+typedef const struct OrtCustomHandleType {
+  char __place_holder;
+}* OrtCustomThreadHandle;
 
- typedef const struct OrtCustomHandleType {
-   char __place_holder;
- }* OrtCustomThreadHandle;
+/** \brief Ort custom thread creation function
+ *
+ * The function should return a thread handle to be used in onnxruntime thread pools
+ * Onnxruntime will throw exception on return value of nullptr or 0, indicating that the function failed to create a thread
+ */
+typedef OrtCustomThreadHandle (*OrtCustomCreateThreadFn)(void* ort_custom_thread_creation_options, OrtThreadWorkerFn ort_thread_worker_fn, void* ort_worker_fn_param);
 
- /** \brief Ort custom thread creation function
-  *
-  * The function should return a thread handle to be used in onnxruntime thread pools
-  * Onnxruntime will throw exception on return value of nullptr or 0, indicating that the function failed to create a thread
-  */
- typedef OrtCustomThreadHandle (*OrtCustomCreateThreadFn)(void* ort_custom_thread_creation_options, OrtThreadWorkerFn ort_thread_worker_fn, void* ort_worker_fn_param);
+/** \brief Custom thread join function
+ *
+ * Onnxruntime thread pool destructor will call the function to join a custom thread.
+ * Argument ort_custom_thread_handle is the value returned by OrtCustomCreateThreadFn
+ */
+typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_handle);
 
- /** \brief Custom thread join function
-  *
-  * Onnxruntime thread pool destructor will call the function to join a custom thread.
-  * Argument ort_custom_thread_handle is the value returned by OrtCustomCreateThreadFn
-  */
- typedef void (*OrtCustomJoinThreadFn)(OrtCustomThreadHandle ort_custom_thread_handle);
+typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
 
- typedef OrtStatus*(ORT_API_CALL* RegisterCustomOpsFn)(OrtSessionOptions* options, const OrtApiBase* api);
+/** \brief Callback function for RunAsync
+ *
+ * \param[in] user_data User specific data that passed back to the callback
+ * \param[out] outputs On succeed, outputs host inference results, on error, the value will be nullptr
+ * \param[out] num_outputs Number of outputs, on error, the value will be zero
+ * \param[out] status On error, status will provide details
+ */
+typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
 
- /** \brief Callback function for RunAsync
-  *
-  * \param[in] user_data User specific data that passed back to the callback
-  * \param[out] outputs On succeed, outputs host inference results, on error, the value will be nullptr
-  * \param[out] num_outputs Number of outputs, on error, the value will be zero
-  * \param[out] status On error, status will provide details
-  */
- typedef void (*RunAsyncCallbackFn)(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr status);
+/** \brief The C API
+ *
+ * All C API functions are defined inside this structure as pointers to functions.
+ * Call OrtApiBase::GetApi to get a pointer to it
+ *
+ * \nosubgrouping
+ */
+struct OrtApi {
+  /// \name OrtStatus
+  /// @{
 
- /** \brief The C API
-  *
-  * All C API functions are defined inside this structure as pointers to functions.
-  * Call OrtApiBase::GetApi to get a pointer to it
-  *
-  * \nosubgrouping
-  */
- struct OrtApi {
-   /// \name OrtStatus
-   /// @{
+  /**
+   * \brief Create an OrtStatus from a null terminated string
+   *
+   * \param[in] code
+   * \param[in] msg A null-terminated string. Its contents will be copied.
+   * \return A new OrtStatus object, must be destroyed with OrtApi::ReleaseStatus
+   */
+  OrtStatus*(ORT_API_CALL* CreateStatus)(OrtErrorCode code, _In_ const char* msg)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
 
-   /**
-    * \brief Create an OrtStatus from a null terminated string
-    *
-    * \param[in] code
-    * \param[in] msg A null-terminated string. Its contents will be copied.
-    * \return A new OrtStatus object, must be destroyed with OrtApi::ReleaseStatus
-    */
-   OrtStatus*(ORT_API_CALL* CreateStatus)(OrtErrorCode code, _In_ const char* msg)NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
-
-   /** \brief Get OrtErrorCode from OrtStatus
-    *
-    * \param[in] status
+  /** \brief Get OrtErrorCode from OrtStatus
+   *
+   * \param[in] status
     * \return OrtErrorCode that \p status was created with
     */
    OrtErrorCode(ORT_API_CALL* GetErrorCode)(_In_ const OrtStatus* status) NO_EXCEPTION ORT_ALL_ARGS_NONNULL;
@@ -5179,14 +5176,6 @@
     * \since Version 1.22.
     */
    const OrtHardwareDevice*(ORT_API_CALL* EpDevice_Device)(_In_ const OrtEpDevice* ep_device);
-
-   /** \brief Get the API for implementing plugin execution providers.
-    *
-    * \return Execution Provider API struct
-    *
-    * \since Version 1.22.
-    */
-   const OrtEpApi*(ORT_API_CALL* GetEpApi)();
  };
 
  /*
@@ -6012,60 +6001,6 @@
     * \since Version 1.22.
     */
    void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, struct OrtEp* ep);
- };
-
- /**
-  * \brief The OrtEpApi struct provides functions to implement plugin execution providers.
-  *
-  * Execution providers are used to offload computation to hardware accelerators.
-  * See \href https://onnxruntime.ai/docs/execution_providers for details.
-  *
-  * \since Version 1.22.
-  */
- struct OrtEpApi {
-   //
-   // OrtSessionOptions accessors
-   //
-
-   /** \brief Get the configuration options for the session.
-    *
-    * \param[in] session_options The OrtSessionOptions instance to query.
-    * \return An OrtKeyValuePairs instance containing the configuration options for the session. The user must call
-    *         ReleaseKeyValuePairs to release the instance.
-    *
-    * \snippet{doc} snippets.dox OrtStatus Return Value
-    *
-    * \since Version 1.22.
-    */
-   ORT_API2_STATUS(SessionOptions_GetConfigOptions, _In_ const OrtSessionOptions* session_options,
-                   _Out_ OrtKeyValuePairs** options);
-
-   /** \brief Get a specific configuration option for the session.
-    *
-    * \param[in] session_options The OrtSessionOptions instance to query.
-    * \param[in] key The key of the configuration option to get.
-    * \return The value of the configuration option for the session if found. Null if not found.
-    *
-    * \since Version 1.22.
-    */
-   const char*(ORT_API_CALL* SessionOptions_GetConfigOption)(_In_ const OrtSessionOptions* session_options,
-                                                             _In_ const char* key);
-
-   /** \brief Get a the graph optimization level for the session.
-    *
-    * An execution provider should honor this optimization level when optimizing nodes it has been assigned.
-    *
-    * \param[in] session_options The OrtSessionOptions instance to query.
-    * \return The value of the configuration option for the session if found. Null if not found.
-    *
-    * \since Version 1.22.
-    */
-   GraphOptimizationLevel(ORT_API_CALL* SessionOptions_GetOptimizationLevel)(
-       _In_ const OrtSessionOptions* session_options);
-
-   // other session options we may need to provide accessors for
-   // - use_deterministic_compute
-   // - custom thread create func/join func/options
  };
 
  /*

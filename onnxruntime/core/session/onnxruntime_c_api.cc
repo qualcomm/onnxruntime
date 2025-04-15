@@ -33,7 +33,6 @@
 #include "core/session/allocator_adapters.h"
 #include "core/session/compile_api.h"
 #include "core/session/environment.h"
-#include "core/session/ep_api.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/IOBinding.h"
@@ -2556,10 +2555,6 @@ ORT_API(const OrtHardwareDevice*, OrtApis::EpDevice_Device, _In_ const OrtEpDevi
   return ep_device->device;
 }
 
-ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
-  return OrtExecutionProviderApi::GetEpApi();
-}
-
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -2984,8 +2979,6 @@ static constexpr OrtApi ort_api_1_to_22 = {
     &OrtApis::EpDevice_EpMetadata,
     &OrtApis::EpDevice_EpOptions,
     &OrtApis::EpDevice_Device,
-
-    &OrtApis::GetEpApi,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -3020,7 +3013,7 @@ static_assert(offsetof(OrtApi, AddExternalInitializersFromFilesInMemory) / sizeo
 // no additions in version 19, 20, and 21
 static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Size of version 20 API cannot change");
 
-static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 315, "Size of version 22 API cannot change");
+static_assert(offsetof(OrtApi, EpDevice_Device) / sizeof(void*) == 314, "Size of version 22 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.22.0",
