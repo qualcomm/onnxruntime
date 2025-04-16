@@ -14,17 +14,17 @@ Status EpLibraryPlugin::Load() {
   try {
     if (factories_.empty()) {
       ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(library_path_, false, &handle_));
-
-      CreateEpApiFactoriesFn create_fn;
-      ORT_RETURN_IF_ERROR(
-          Env::Default().GetSymbolFromLibrary(handle_, "CreateEpFactories", reinterpret_cast<void**>(&create_fn)));
+      ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "CreateEpFactories",
+                                                              reinterpret_cast<void**>(&create_fn_)));
+      ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "ReleaseEpFactory",
+                                                              reinterpret_cast<void**>(&release_fn_)));
 
       // allocate buffer for EP to add factories to. library can add up to 4 factories.
       std::vector<OrtEpFactory*> factories{4, nullptr};
 
       size_t num_factories = 0;
-      OrtStatus* ort_status = create_fn(registration_name_.c_str(), OrtGetApiBase(),
-                                        factories.data(), factories.size(), &num_factories);
+      OrtStatus* ort_status = create_fn_(registration_name_.c_str(), OrtGetApiBase(),
+                                         factories.data(), factories.size(), &num_factories);
       if (ort_status != nullptr) {
         return ToStatus(ort_status);
       }
@@ -53,17 +53,13 @@ Status EpLibraryPlugin::Unload() {
   if (handle_) {
     if (!factories_.empty()) {
       try {
-        ReleaseEpApiFactoryFn release_fn;
-        ORT_RETURN_IF_ERROR(
-            Env::Default().GetSymbolFromLibrary(handle_, "ReleaseEpFactory", reinterpret_cast<void**>(&release_fn)));
-
         for (size_t idx = 0, end = factories_.size(); idx < end; ++idx) {
           auto* factory = factories_[idx];
           if (factory == nullptr) {
             continue;
           }
 
-          OrtStatus* status = release_fn(factory);
+          OrtStatus* status = release_fn_(factory);
           if (status != nullptr) {
             // log it and treat it as released
             LOGS_DEFAULT(ERROR) << "ReleaseEpFactory failed for: " << library_path_ << " with error: "
@@ -90,6 +86,39 @@ Status EpLibraryPlugin::Unload() {
   }
 
   handle_ = nullptr;
+
+  return Status::OK();
+}
+
+Status EpLibraryPlugin::LoadPluginOrProviderBridge(const std::string& registration_name,
+                                                   const ORTCHAR_T* library_path,
+                                                   std::unique_ptr<EpLibrary>& ep_library,
+                                                   std::vector<EpFactoryInternal*>& internal_factories) {
+  ProviderLibrary plugin{library_path};
+  auto& provider = plugin.Get();
+  (void)provider;
+
+  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, library_path);
+
+  ORT_RETURN_IF_ERROR(ep_library_plugin->Load());
+
+  // see if it has GetProvider which would indicate a provider bridge EP.
+  Provider* (*get_provider_fn)();
+  Status status = Env::Default().GetSymbolFromLibrary(ep_library_plugin->handle_, "GetProvider",
+                                                      (void**)&get_provider_fn);
+
+  // pass the ep_library_plugin to wrap with EpLibraryProviderBridge
+  if (status.IsOK() && get_provider_fn != nullptr) {
+    // std::unique_ptr<EpLibrary> ep_library = std::move(ep_library_plugin);
+    auto ep_library_provider_bridge = std::make_unique<EpLibraryProviderBridge>(std::move(ep_library_plugin),
+                                                                                library_path);
+    ORT_RETURN_IF_ERROR(ep_library_provider_bridge->Load());
+    internal_factories = ep_library_provider_bridge->GetInternalFactories();
+    ep_library = std::move(ep_library_provider_bridge);
+  } else {
+    // if we don't have the provider bridge entry point we just use the plugin library
+    ep_library = std::move(ep_library_plugin);
+  }
 
   return Status::OK();
 }

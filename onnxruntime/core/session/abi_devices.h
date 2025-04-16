@@ -22,7 +22,10 @@ struct OrtHardwareDevice {
     onnxruntime::HashCombine(hd.vendor_id, h);
     onnxruntime::HashCombine(hd.vendor, h);
     onnxruntime::HashCombine(hd.type, h);
-    // skip the metadata for now
+    for (const auto& [key, value] : hd.metadata.entries) {
+      onnxruntime::HashCombine(key, h);
+      onnxruntime::HashCombine(value, h);
+    }
 
     return h;
   }

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <memory>
 
 #include "core/session/ep_library.h"
 #include "core/session/ep_factory_internal.h"
@@ -10,14 +11,13 @@
 namespace onnxruntime {
 
 struct EpLibraryProviderBridge : EpLibrary {
-  EpLibraryProviderBridge(const std::string& registration_name, const ORTCHAR_T* library_path)
-      : registration_name_{registration_name},
-        library_path_{library_path},
+  EpLibraryProviderBridge(std::unique_ptr<EpLibrary> ep_library_plugin, const ORTCHAR_T* library_path)
+      : ep_library_plugin_{std::move(ep_library_plugin)},
         provider_library_{library_path} {
   }
 
   const char* RegistrationName() const override {
-    return registration_name_.c_str();
+    return ep_library_plugin_->RegistrationName();
   }
 
   const std::vector<OrtEpFactory*>& GetFactories() override {
@@ -35,11 +35,12 @@ struct EpLibraryProviderBridge : EpLibrary {
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryProviderBridge);
 
  private:
-  std::unique_ptr<EpFactoryInternal> CreateCudaEpFactory(Provider& provider);
+  // EpLibraryPlugin that provided CreateEpFactories and ReleaseEpFactory implementations.
+  // we wrap the factories it contains to pass through GetDeviceInfoIfSupported calls, and
+  // provide EpFactoryInternal::CreateIExecutionProvider by calling Provider::CreateIExecutionProvider
+  std::unique_ptr<EpLibrary> ep_library_plugin_;
+  ProviderLibrary provider_library_;  // provider bridge EP library
 
-  std::string registration_name_;
-  std::filesystem::path library_path_;
-  ProviderLibrary provider_library_;  // handles onnxruntime_providers_shared and the provider bridge EP library
   std::vector<std::unique_ptr<EpFactoryInternal>> factories_;
   std::vector<OrtEpFactory*> factory_ptrs_;                // for convenience
   std::vector<EpFactoryInternal*> internal_factory_ptrs_;  // for convenience

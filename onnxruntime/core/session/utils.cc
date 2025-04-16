@@ -60,8 +60,7 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
     if (internal_factory) {
       // this is a factory we created and registered. internal or provider bridge EP.
       OrtStatus* status = internal_factory->CreateIExecutionProvider(
-          devices.data(), ep_metadata.data(), devices.size(),
-          &ort_so, &api_session_logger, ep);
+          devices.data(), ep_metadata.data(), devices.size(), &ort_so, &api_session_logger, &ep);
 
       if (status != nullptr) {
         return ToStatus(status);

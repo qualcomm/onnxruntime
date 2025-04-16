@@ -20,6 +20,27 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 namespace test {
 
+namespace {
+
+void DefaultDeviceSelection(const std::string& ep_name, std::vector<const OrtEpDevice*>& devices) {
+  const OrtApi* c_api = &Ort::GetApi();
+  const OrtEpDevice* const* ep_devices = nullptr;
+  size_t num_devices = 0;
+
+  std::vector<OrtEpDevice*> selected_ep_device;
+  ASSERT_ORTSTATUS_OK(c_api->GetEpDevices(*ort_env, &ep_devices, &num_devices));
+  for (size_t i = 0; i < num_devices; ++i) {
+    const OrtEpDevice* device = ep_devices[i];
+    if (c_api->EpDevice_EpName(device) == ep_name) {
+      devices.push_back(device);
+      break;
+    }
+  }
+
+  ASSERT_TRUE(!devices.empty()) << "No devices found with EP name of " << ep_name;
+}
+}  // namespace
+
 template <typename ModelOutputT, typename ModelInputT = float, typename InputT = Input<float>>
 static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& model_uri,
                           const std::string& ep_to_select,
@@ -30,6 +51,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           const std::vector<int64_t>& expected_dims_y,
                           const std::vector<ModelOutputT>& expected_values_y,
                           bool auto_select = true,  // auto select vs SessionOptionsAppendExecutionProvider_V2
+                          std::function<void(std::vector<const OrtEpDevice*>&)> select_devices = nullptr,
                           bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
@@ -51,8 +73,16 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
       session_options.AddConfigEntry((option_prefix + key).c_str(), value.c_str());
     }
   } else {
+    std::vector<const OrtEpDevice*> devices;
+    if (select_devices) {
+      select_devices(devices);
+    } else {
+      // pick the first one assigned to the EP.
+      DefaultDeviceSelection(ep_to_select, devices);
+    }
+
     ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsAppendExecutionProvider_V2(
-        session_options, env, ep_to_select.c_str(),
+        session_options, env, devices.data(), devices.size(),
         provider_options.keys.data(), provider_options.values.data(), provider_options.entries.size()));
   }
 
@@ -101,14 +131,14 @@ void RunBasicTest(const std::string& ep_name, std::optional<std::filesystem::pat
 }  // namespace
 
 TEST(AutoEpSelection, CpuEP) {
-  RunBasicTest(std::string(kCpuExecutionProvider), std::nullopt);
+  RunBasicTest(std::string("CPU"), std::nullopt);
 }
 
 #if defined(USE_CUDA)
 TEST(AutoEpSelection, CudaEP) {
   OrtKeyValuePairs provider_options;
   provider_options.Add("prefer_nhwc", "1");
-  RunBasicTest("CUDA", "onnxruntime_providers_cuda", provider_options);
+  RunBasicTest(kCudaExecutionProvider, "onnxruntime_providers_cuda", provider_options);
 }
 #endif
 
@@ -116,6 +146,32 @@ TEST(AutoEpSelection, CudaEP) {
 TEST(AutoEpSelection, DmlEP) {
   OrtKeyValuePairs provider_options;
   provider_options.Add("device_id", "0");
+  const auto select_devices = [](std::vector<const OrtEpDevice*>& devices) {
+    const OrtApi* c_api = &Ort::GetApi();
+    const OrtEpDevice* const* ep_devices = nullptr;
+    size_t num_devices = 0;
+
+    std::vector<OrtEpDevice*> selected_ep_device;
+    ASSERT_ORTSTATUS_OK(c_api->GetEpDevices(*ort_env, &ep_devices, &num_devices));
+    for (size_t i = 0; i < num_devices; ++i) {
+      const OrtEpDevice* device = ep_devices[i];
+      if (strcmp(c_api->EpDevice_EpName(device), "DML") == 0) {
+        if (devices.empty()) {
+          // add the first device
+          devices.push_back(device);
+        } else {
+          // let an NVIDIA device override the first device
+          if (strcmp(c_api->EpDevice_EpVendor(device), "NVIDIA") == 0) {
+            devices.clear();
+            devices[0] = device;
+          }
+        }
+      }
+    }
+
+    ASSERT_TRUE(!devices.empty()) << "No DML devices found";
+  };
+
   RunBasicTest("DML", std::nullopt, provider_options);
 }
 #endif
