@@ -19,9 +19,7 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
-
 namespace {
-
 void DefaultDeviceSelection(const std::string& ep_name, std::vector<const OrtEpDevice*>& devices) {
   const OrtApi* c_api = &Ort::GetApi();
   const OrtEpDevice* const* ep_devices = nullptr;
@@ -39,6 +37,16 @@ void DefaultDeviceSelection(const std::string& ep_name, std::vector<const OrtEpD
 
   ASSERT_TRUE(!devices.empty()) << "No devices found with EP name of " << ep_name;
 }
+
+bool IsRegistered(const std::string& ep_name) {
+  static std::unordered_set<std::string> registered_eps;
+  if (registered_eps.count(ep_name) == 0) {
+    registered_eps.insert(ep_name);
+    return false;
+  }
+
+  return true;
+}
 }  // namespace
 
 template <typename ModelOutputT, typename ModelInputT = float, typename InputT = Input<float>>
@@ -55,9 +63,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
-  if (library_path) {
-    // use EP name as registration name for now. there's some hardcoded matching of names to special case
-    // the provider bridge EPs short term.
+  if (library_path && IsRegistered(ep_to_select) == false) {
     ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(env, ep_to_select.c_str(),
                                                                        library_path->c_str()));
   }
@@ -183,7 +189,7 @@ TEST(AutoEpSelection, WebGpuEP) {
 #endif
 
 TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
-  std::filesystem::path library_path = "example_plugin_ep_library.dll";
+  std::filesystem::path library_path = "example_plugin_ep.dll";
   const std::string registration_name = "example_ep";
 
   Ort::SessionOptions session_options;

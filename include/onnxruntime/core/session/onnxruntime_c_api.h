@@ -5110,7 +5110,7 @@ struct OrtApi {
    *
    * \since Version 1.22.
    */
-  int32_t(ORT_API_CALL* HardwareDevice_VendorId)(_In_ const OrtHardwareDevice* device);
+  uint32_t(ORT_API_CALL* HardwareDevice_VendorId)(_In_ const OrtHardwareDevice* device);
 
   /** \brief Get the hardware device's vendor name.
    *
@@ -5124,12 +5124,12 @@ struct OrtApi {
   /** \brief Get the hardware device's unique identifier.
    *
    * \param[in] device The OrtHardwareDevice instance to query.
-   * \return The bus ID of the device.
+   * \return The device id.
    *
+   * \note This is not a unique identifier. It identifies the hardware type when combined with vendor it.
    * \since Version 1.22.
    */
-  // ??? does the user care about the 'bus' part or could this just be HardwareDevice_Id?
-  int32_t(ORT_API_CALL* HardwareDevice_BusId)(_In_ const OrtHardwareDevice* device);
+  uint32_t(ORT_API_CALL* HardwareDevice_DeviceId)(_In_ const OrtHardwareDevice* device);
 
   /** \brief Get hardware device metadata.
    *

@@ -89,37 +89,4 @@ Status EpLibraryPlugin::Unload() {
 
   return Status::OK();
 }
-
-Status EpLibraryPlugin::LoadPluginOrProviderBridge(const std::string& registration_name,
-                                                   const ORTCHAR_T* library_path,
-                                                   std::unique_ptr<EpLibrary>& ep_library,
-                                                   std::vector<EpFactoryInternal*>& internal_factories) {
-  ProviderLibrary plugin{library_path};
-  auto& provider = plugin.Get();
-  (void)provider;
-
-  auto ep_library_plugin = std::make_unique<EpLibraryPlugin>(registration_name, library_path);
-
-  ORT_RETURN_IF_ERROR(ep_library_plugin->Load());
-
-  // see if it has GetProvider which would indicate a provider bridge EP.
-  Provider* (*get_provider_fn)();
-  Status status = Env::Default().GetSymbolFromLibrary(ep_library_plugin->handle_, "GetProvider",
-                                                      (void**)&get_provider_fn);
-
-  // pass the ep_library_plugin to wrap with EpLibraryProviderBridge
-  if (status.IsOK() && get_provider_fn != nullptr) {
-    // std::unique_ptr<EpLibrary> ep_library = std::move(ep_library_plugin);
-    auto ep_library_provider_bridge = std::make_unique<EpLibraryProviderBridge>(std::move(ep_library_plugin),
-                                                                                library_path);
-    ORT_RETURN_IF_ERROR(ep_library_provider_bridge->Load());
-    internal_factories = ep_library_provider_bridge->GetInternalFactories();
-    ep_library = std::move(ep_library_provider_bridge);
-  } else {
-    // if we don't have the provider bridge entry point we just use the plugin library
-    ep_library = std::move(ep_library_plugin);
-  }
-
-  return Status::OK();
-}
 }  // namespace onnxruntime

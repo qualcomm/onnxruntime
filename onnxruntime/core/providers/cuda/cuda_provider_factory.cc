@@ -330,7 +330,7 @@ struct CudaEpFactory : OrtEpFactory {
                                            _Out_opt_ OrtKeyValuePairs** ep_options) {
     const auto* factory = static_cast<const CudaEpFactory*>(this_ptr);
 
-    if (factory->ort_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU &&
+     if (factory->ort_api.HardwareDevice_Type(device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU &&
         factory->ort_api.HardwareDevice_VendorId(device) == 0x10de) {
       return true;
     }

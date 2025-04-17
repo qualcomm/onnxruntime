@@ -2496,7 +2496,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtS
       ORT_API_RETURN_IF_STATUS_NOT_OK(config_options.AddConfigEntry((prefix + key).c_str(), value.c_str()));
     }
 
-    for (size_t j = 0; j < num_ep_options; ++i) {
+    for (size_t j = 0; j < num_ep_options; ++j) {
       if (ep_option_keys[j] == nullptr) {
         continue;
       }
@@ -2521,7 +2521,7 @@ ORT_API(OrtHardwareDeviceType, OrtApis::HardwareDevice_Type, _In_ const OrtHardw
   return OrtHardwareDeviceType(device->type);
 }
 
-ORT_API(int32_t, OrtApis::HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device) {
+ORT_API(uint32_t, OrtApis::HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device) {
   return device->vendor_id;
 }
 
@@ -2529,8 +2529,8 @@ ORT_API(const char*, OrtApis::HardwareDevice_Vendor, _In_ const OrtHardwareDevic
   return device->vendor.c_str();
 }
 
-ORT_API(int32_t, OrtApis::HardwareDevice_BusId, _In_ const OrtHardwareDevice* device) {
-  return device->bus_id;
+ORT_API(uint32_t, OrtApis::HardwareDevice_DeviceId, _In_ const OrtHardwareDevice* device) {
+  return device->device_id;
 }
 
 ORT_API(const OrtKeyValuePairs*, OrtApis::HardwareDevice_Metadata, _In_ const OrtHardwareDevice* ep_device) {
@@ -2973,7 +2973,7 @@ static constexpr OrtApi ort_api_1_to_22 = {
     &OrtApis::HardwareDevice_Type,
     &OrtApis::HardwareDevice_VendorId,
     &OrtApis::HardwareDevice_Vendor,
-    &OrtApis::HardwareDevice_BusId,
+    &OrtApis::HardwareDevice_DeviceId,
     &OrtApis::HardwareDevice_Metadata,
 
     &OrtApis::EpDevice_EpName,

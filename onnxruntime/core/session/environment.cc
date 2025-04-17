@@ -16,6 +16,7 @@
 #include "core/session/ep_library_plugin.h"
 #include "core/session/ep_library_provider_bridge.h"
 #include "core/session/ort_apis.h"
+#include "core/session/utils.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/operator_sets.h"
@@ -415,8 +416,8 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
   std::unique_ptr<EpLibrary> ep_library;
 
   // This will create an EpLibraryPlugin or an EpLibraryProviderBridge depending on what the library supports.
-  ORT_RETURN_IF_ERROR(EpLibraryPlugin::LoadPluginOrProviderBridge(registration_name, lib_path, ep_library,
-                                                                  internal_factories));
+  ORT_RETURN_IF_ERROR(LoadPluginOrProviderBridge(registration_name, lib_path, ep_library,
+                                                 internal_factories));
 
   return RegisterExecutionProviderLibrary(registration_name, std::move(ep_library), internal_factories);
 }

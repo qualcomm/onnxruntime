@@ -10,7 +10,8 @@
 #include "core/session/ep_library_provider_bridge.h"
 
 namespace onnxruntime {
-struct EpLibraryPlugin : EpLibrary {
+class EpLibraryPlugin : public EpLibrary {
+ public:
   EpLibraryPlugin(const std::string& registration_name, const ORTCHAR_T* library_path)
       : registration_name_{registration_name},
         library_path_{library_path} {
@@ -29,15 +30,6 @@ struct EpLibraryPlugin : EpLibrary {
   Status Unload() override;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibraryPlugin);
-
-  // provider bridge has the EP factory functions as well as supporting onnxruntime::Provider.
-  // we start by loading here to get the library handle and verify the OrtEpApi entry points are found.
-  // if the provider bridge entry point is also found we pass the EpLibraryPlugin to an EpLibraryProviderBridge
-  // that can which wraps the plugin and can also directly create an IExecutionProvider instance.
-  static Status LoadPluginOrProviderBridge(const std::string& registration_name,
-                                           const ORTCHAR_T* library_path,
-                                           std::unique_ptr<EpLibrary>& ep_library,
-                                           std::vector<EpFactoryInternal*>& internal_factories);
 
  private:
   std::mutex mutex_;

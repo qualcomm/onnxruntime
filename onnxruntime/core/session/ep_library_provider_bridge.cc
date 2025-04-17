@@ -12,7 +12,6 @@
 #include "core/session/ep_factory_internal.h"
 
 namespace onnxruntime {
-
 Status EpLibraryProviderBridge::Load() {
   for (const auto& factory : ep_library_plugin_->GetFactories()) {
     const auto is_supported_fn = [&factory](const OrtHardwareDevice* device,
@@ -30,7 +29,7 @@ Status EpLibraryProviderBridge::Load() {
                                                                  : session_options->value;
       // get the provider options
       auto ep_options = GetOptionsFromSessionOptions(factory->GetName(factory), so);
-      auto& provider = provider_library_.Get();
+      auto& provider = provider_library_->Get();
 
       auto status = provider.CreateIExecutionProvider(devices, ep_metadata_pairs, num_devices,
                                                       ep_options, *session_options, *logger, *ep);
@@ -52,7 +51,7 @@ Status EpLibraryProviderBridge::Load() {
 }
 
 Status EpLibraryProviderBridge::Unload() {
-  provider_library_.Unload();
+  provider_library_->Unload();
   return Status::OK();
 }
 

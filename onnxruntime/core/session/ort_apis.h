@@ -577,9 +577,9 @@ ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOpt
 
 // OrtHardwareDevice accessors.
 ORT_API(OrtHardwareDeviceType, HardwareDevice_Type, _In_ const OrtHardwareDevice* device);
-ORT_API(int32_t, HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device);
+ORT_API(uint32_t, HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device);
 ORT_API(const char*, HardwareDevice_Vendor, _In_ const OrtHardwareDevice* device);
-ORT_API(int32_t, HardwareDevice_BusId, _In_ const OrtHardwareDevice* device);
+ORT_API(uint32_t, HardwareDevice_DeviceId, _In_ const OrtHardwareDevice* device);
 ORT_API(const OrtKeyValuePairs*, HardwareDevice_Metadata, _In_ const OrtHardwareDevice* device);
 
 // OrtEpDevice accessors

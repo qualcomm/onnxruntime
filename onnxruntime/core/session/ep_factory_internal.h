@@ -11,7 +11,7 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
-struct EpLibraryInternal;
+class EpLibraryInternal;
 struct SessionOptions;
 
 class EpFactoryInternal : public OrtEpFactory {
