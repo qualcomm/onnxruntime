@@ -59,7 +59,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           const std::vector<int64_t>& expected_dims_y,
                           const std::vector<ModelOutputT>& expected_values_y,
                           bool auto_select = true,  // auto select vs SessionOptionsAppendExecutionProvider_V2
-                          std::function<void(std::vector<const OrtEpDevice*>&)> select_devices = nullptr,
+                          const std::function<void(std::vector<const OrtEpDevice*>&)>& select_devices = nullptr,
                           bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
@@ -110,7 +110,8 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 
 namespace {
 void RunBasicTest(const std::string& ep_name, std::optional<std::filesystem::path> library_path,
-                  const OrtKeyValuePairs& provider_options = {}) {
+                  const OrtKeyValuePairs& provider_options = {},
+                  const std::function<void(std::vector<const OrtEpDevice*>&)>& select_devices = nullptr) {
   const auto run_test = [&](bool auto_select) {
     std::vector<Input<float>> inputs(1);
     auto& input = inputs.back();
@@ -128,7 +129,8 @@ void RunBasicTest(const std::string& ep_name, std::optional<std::filesystem::pat
                          "Y",
                          expected_dims_y,
                          expected_values_y,
-                         auto_select);
+                         auto_select,
+                         select_devices);
   };
 
   run_test(true);   // auto ep selection after session creation
@@ -137,7 +139,7 @@ void RunBasicTest(const std::string& ep_name, std::optional<std::filesystem::pat
 }  // namespace
 
 TEST(AutoEpSelection, CpuEP) {
-  RunBasicTest(std::string("CPU"), std::nullopt);
+  RunBasicTest(kCpuExecutionProvider, std::nullopt);
 }
 
 #if defined(USE_CUDA)
@@ -151,8 +153,9 @@ TEST(AutoEpSelection, CudaEP) {
 #if defined(USE_DML)
 TEST(AutoEpSelection, DmlEP) {
   OrtKeyValuePairs provider_options;
-  provider_options.Add("device_id", "0");
-  const auto select_devices = [](std::vector<const OrtEpDevice*>& devices) {
+  provider_options.Add("disable_metacommands", "true");  // checking options are passed through
+
+  const auto select_devices = [&](std::vector<const OrtEpDevice*>& devices) {
     const OrtApi* c_api = &Ort::GetApi();
     const OrtEpDevice* const* ep_devices = nullptr;
     size_t num_devices = 0;
@@ -160,16 +163,24 @@ TEST(AutoEpSelection, DmlEP) {
     std::vector<OrtEpDevice*> selected_ep_device;
     ASSERT_ORTSTATUS_OK(c_api->GetEpDevices(*ort_env, &ep_devices, &num_devices));
     for (size_t i = 0; i < num_devices; ++i) {
-      const OrtEpDevice* device = ep_devices[i];
-      if (strcmp(c_api->EpDevice_EpName(device), "DML") == 0) {
+      const OrtEpDevice* ep_device = ep_devices[i];
+      if (strcmp(c_api->EpDevice_EpName(ep_device), kDmlExecutionProvider) == 0) {
+        const auto* device = c_api->EpDevice_Device(ep_device);
+        const OrtKeyValuePairs* kvps = c_api->HardwareDevice_Metadata(device);
         if (devices.empty()) {
           // add the first device
-          devices.push_back(device);
+          devices.push_back(ep_device);
         } else {
-          // let an NVIDIA device override the first device
-          if (strcmp(c_api->EpDevice_EpVendor(device), "NVIDIA") == 0) {
-            devices.clear();
-            devices[0] = device;
+          // if this is available, 0 == best performance
+          auto* perf_index = c_api->GetKeyValue(kvps, "HighPerformanceIndex");
+          if (perf_index && strcmp(perf_index, "0") == 0) {
+            devices.push_back(ep_device);
+          } else {
+            // let an NVIDIA device override the first device
+            if (strcmp(c_api->EpDevice_EpVendor(ep_device), "NVIDIA") == 0) {
+              devices.clear();
+              devices[0] = ep_device;
+            }
           }
         }
       }
@@ -178,13 +189,13 @@ TEST(AutoEpSelection, DmlEP) {
     ASSERT_TRUE(!devices.empty()) << "No DML devices found";
   };
 
-  RunBasicTest("DML", std::nullopt, provider_options);
+  RunBasicTest(kDmlExecutionProvider, std::nullopt, provider_options, select_devices);
 }
 #endif
 
 #if defined(USE_WEBGPU)
 TEST(AutoEpSelection, WebGpuEP) {
-  RunBasicTest("WebGPU", std::nullopt);
+  RunBasicTest(kWebGpuExecutionProvider, std::nullopt);
 }
 #endif
 

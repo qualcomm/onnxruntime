@@ -7,7 +7,6 @@
 #include <mutex>
 
 #include "core/session/ep_library.h"
-#include "core/session/ep_library_provider_bridge.h"
 
 namespace onnxruntime {
 class EpLibraryPlugin : public EpLibrary {

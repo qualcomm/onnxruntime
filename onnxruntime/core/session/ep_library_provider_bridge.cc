@@ -13,6 +13,9 @@
 
 namespace onnxruntime {
 Status EpLibraryProviderBridge::Load() {
+  // wrap the EpLibraryPlugin factories that were created by calling CreateEpFactories.
+  // use GetDeviceInfoIfSupported from the factory.
+  // call Provider::CreateIExecutionProvider in EpFactoryInternal::CreateIExecutionProvider.
   for (const auto& factory : ep_library_plugin_->GetFactories()) {
     const auto is_supported_fn = [&factory](const OrtHardwareDevice* device,
                                             OrtKeyValuePairs** ep_metadata,

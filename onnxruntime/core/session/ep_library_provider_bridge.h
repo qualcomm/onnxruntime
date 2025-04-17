@@ -41,7 +41,7 @@ class EpLibraryProviderBridge : public EpLibrary {
 
   // EpLibraryPlugin that provided CreateEpFactories and ReleaseEpFactory implementations.
   // we wrap the factories it contains to pass through GetDeviceInfoIfSupported calls, and
-  // provide EpFactoryInternal::CreateIExecutionProvider by calling Provider::CreateIExecutionProvider
+  // implement EpFactoryInternal::CreateIExecutionProvider by calling Provider::CreateIExecutionProvider.
   std::unique_ptr<EpLibrary> ep_library_plugin_;
 
   std::vector<std::unique_ptr<EpFactoryInternal>> factories_;

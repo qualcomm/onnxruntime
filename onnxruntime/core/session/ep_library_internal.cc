@@ -48,22 +48,24 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCpuEp() {
     return nullptr;
   };
 
-  std::string ep_name = "CPU";
+  std::string ep_name = kCpuExecutionProvider;
   auto cpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", is_supported, create_cpu_ep);
   return std::make_unique<EpLibraryInternal>(std::move(cpu_factory));
 }
 
 #if defined(USE_DML)
 std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
-  static const std::string ep_name = "DML";
+  static const std::string ep_name = kDmlExecutionProvider;
   const auto is_supported = [](const OrtHardwareDevice* device,
                                OrtKeyValuePairs** /*ep_metadata*/,
                                OrtKeyValuePairs** ep_options) -> bool {
     if (device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
       // device_id == bus number. TODO: verify this is actually the case
+      // TODO: Should we ignore a user provided 'device_id' when they select an OrtEpDevice that has a specific device?
+      //       How would we know what options should not allow user overrides if set in OrtEpDevice?
       if (auto it = device->metadata.entries.find("BusNumber"); it != device->metadata.entries.end()) {
         auto options = std::make_unique<OrtKeyValuePairs>();
-        options->Add("device_id", it->second.c_str());  // device_id is the bus number
+        options->Add("device_id", it->second.c_str());
         *ep_options = options.release();
       }
 
@@ -105,7 +107,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
 
 #if defined(USE_WEBGPU)
 std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateWebGpuEp() {
-  static const std::string ep_name = "WebGPU";
+  static const std::string ep_name = kWebGpuExecutionProvider;
 
   const auto is_supported = [](const OrtHardwareDevice* device,
                                OrtKeyValuePairs** /*ep_metadata*/,

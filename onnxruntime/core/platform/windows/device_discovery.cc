@@ -149,6 +149,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
         entry->vendor_id = vendor_id;
         entry->device_id = device_id;
       } else {
+        // need valid ids
         continue;
       }
 
@@ -185,6 +186,9 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
           // unknown device type
           continue;
         }
+      } else {
+        // can't set device type
+        continue;
       }
 
       if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_MFG, nullptr,
@@ -227,7 +231,9 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
                                                        IID_PPV_ARGS(&adapter)) != DXGI_ERROR_NOT_FOUND;
        ++i) {
     DXGI_ADAPTER_DESC1 desc;
-    adapter->GetDesc1(&desc);
+    if (FAILED(adapter->GetDesc1(&desc))) {
+      continue;
+    }
 
     do {
       if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0 ||
@@ -254,27 +260,6 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
     adapter->Release();
   }
 
-  /* TODO: Do we need to create a device to discover meaningful info?
-    ID3D12Device* device = nullptr;
-    hr = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device));
-    if (FAILED(hr)) {
-      std::cerr << "Failed to create D3D12 device.\n";
-      adapter->Release();
-      factory->Release();
-      return -1;
-    }
-
-    // Check for compute shader support (feature level 11_0+ implies basic compute support)
-    D3D12_FEATURE_DATA_D3D12_OPTIONS options = {};
-    hr = device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &options, sizeof(options));
-    if (SUCCEEDED(hr)) {
-      std::cout << "Compute shader supported via D3D12." << std::endl;
-      std::cout << "Tiled resources tier: " << options.TiledResourcesTier << std::endl;
-      std::cout << "Resource binding tier: " << options.ResourceBindingTier << std::endl;
-    }
-
-    device->Release();
-    */
   factory->Release();
 
   return device_info;
@@ -284,14 +269,6 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
 // returns LUID to DeviceInfo
 std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
   std::unordered_map<uint64_t, DeviceInfo> device_info;
-
-  // Getting CPU info from SetupApi
-  // Get information about the CPU device
-  // auto vendor = CPUIDInfo::GetCPUIDInfo().GetCPUVendor();
-
-  //// Create an OrtDevice for the CPU and add it to the list of found devices
-  // OrtHardwareDevice cpu_device{OrtHardwareDeviceType_CPU, 0, std::string(vendor), 0};
-  // device_info.insert({-1, cpu_device});
 
   // Get all GPUs and NPUs by querying WDDM/MCDM.
   wil::com_ptr<IDXCoreAdapterFactory> adapterFactory;
@@ -313,7 +290,9 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
     const uint32_t adapterCount{adapterList->GetAdapterCount()};
     for (uint32_t adapterIndex = 0; adapterIndex < adapterCount; adapterIndex++) {
       wil::com_ptr<IDXCoreAdapter> adapter;
-      THROW_IF_FAILED(adapterList->GetAdapter(adapterIndex, IID_PPV_ARGS(&adapter)));
+      if (FAILED(adapterList->GetAdapter(adapterIndex, IID_PPV_ARGS(&adapter)))) {
+        continue;
+      }
 
       // Ignore software based devices
       bool isHardware{false};
@@ -322,13 +301,11 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
         continue;
       }
 
-      HRESULT hrId = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
       static_assert(sizeof(LUID) == sizeof(uint64_t), "LUID and uint64_t are not the same size");
       LUID luid;  // really a LUID but we only need it to skip duplicated devices
-      if (adapter->IsPropertySupported(DXCoreAdapterProperty::InstanceLuid)) {
-        hrId = adapter->GetProperty(DXCoreAdapterProperty::InstanceLuid, sizeof(luid), &luid);
-      } else {
-        continue;
+      if (!adapter->IsPropertySupported(DXCoreAdapterProperty::InstanceLuid) ||
+          FAILED(adapter->GetProperty(DXCoreAdapterProperty::InstanceLuid, sizeof(luid), &luid))) {
+        continue;  // need this for the key
       }
 
       uint64_t key = GetLuidKey(luid);
@@ -341,11 +318,13 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
 
       // Get hardware identifying information
       DXCoreHardwareIDParts idParts = {};
-      if (adapter->IsPropertySupported(DXCoreAdapterProperty::HardwareIDParts)) {
-        hrId = adapter->GetProperty(DXCoreAdapterProperty::HardwareIDParts, sizeof(idParts), &idParts);
-        info.vendor_id = idParts.vendorID;
-        info.device_id = idParts.deviceID;
+      if (!adapter->IsPropertySupported(DXCoreAdapterProperty::HardwareIDParts) ||
+          FAILED(adapter->GetProperty(DXCoreAdapterProperty::HardwareIDParts, sizeof(idParts), &idParts))) {
+        continue;  // also need valid ids
       }
+
+      info.vendor_id = idParts.vendorID;
+      info.device_id = idParts.deviceID;
 
       // Is this a GPU or NPU
       if (adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS)) {
@@ -354,8 +333,17 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
         info.type = OrtHardwareDeviceType::OrtHardwareDeviceType_NPU;
       }
 
-      // this returns char_t on US-EN Windows. assuming it returns wchar_t on other locales
-      // the description from SetupApi is wchar_t to assuming we have that and don't need this one.
+      bool is_integrated = false;
+      if (adapter->IsPropertySupported(DXCoreAdapterProperty::IsIntegrated) &&
+          SUCCEEDED(adapter->GetProperty(DXCoreAdapterProperty::IsIntegrated, sizeof(is_integrated),
+                                         &is_integrated))) {
+        info.metadata[L"Discrete"] = is_integrated ? L"0" : L"1";
+      }
+
+      // this returns char_t on us-en Windows. assuming it returns wchar_t on other locales but not clear what it
+      // does when.
+      // The description from SetupApi is wchar_t so assuming we have that and don't need this one.
+      //
       // hrId = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
       // std::wstring driverDescription;
       // driverDescription.resize(256);
@@ -392,9 +380,20 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
   std::unordered_map<uint64_t, DeviceInfo> setupapi_info = GetDeviceInfoSetupApi(npus);
 
   // add dxcore info for any devices that are not in d3d12.
-  // d3d12 info is more complete and has a good description and metadata
+  // d3d12 info is more complete and has a good description and metadata.
+  // dxcore has 'Discrete' in metadata so add that if found
   for (auto& [luid, device] : luid_to_dxinfo) {
-    if (luid_to_d3d12_info.find(luid) == luid_to_d3d12_info.end()) {
+    if (auto it = luid_to_d3d12_info.find(luid); it != luid_to_d3d12_info.end()) {
+      // merge the metadata
+      const auto& dxcore_metadata = device.metadata;
+      auto& d3d12_metadata = it->second.metadata;
+
+      for (auto& [key, value] : dxcore_metadata) {
+        if (d3d12_metadata.find(key) == d3d12_metadata.end()) {
+          d3d12_metadata[key] = value;
+        }
+      }
+    } else {
       luid_to_d3d12_info[luid] = device;
     }
   }
