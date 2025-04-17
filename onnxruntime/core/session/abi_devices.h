@@ -24,9 +24,7 @@ struct OrtHardwareDevice {
     onnxruntime::HashCombine(hd.type, h);
     for (const auto& [key, value] : hd.metadata.entries) {
       onnxruntime::HashCombine(key, h);
-      if (value) {
-        onnxruntime::HashCombine(value, h);
-      }
+      onnxruntime::HashCombine(value, h);
     }
 
     return h;

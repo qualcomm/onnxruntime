@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// We only have device discovery on windows currently
+#if _WIN32
+
 #include <filesystem>
 #include <absl/base/config.h>
 #include <gtest/gtest.h>
@@ -200,7 +203,12 @@ TEST(AutoEpSelection, WebGpuEP) {
 #endif
 
 TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
+#if _WIN32
   std::filesystem::path library_path = "example_plugin_ep.dll";
+#else
+  std::filesystem::path library_path = "libexample_plugin_ep.so";
+#endif
+
   const std::string registration_name = "example_ep";
 
   Ort::SessionOptions session_options;
@@ -230,3 +238,5 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
 }
 }  // namespace test
 }  // namespace onnxruntime
+
+#endif  // _WIN32

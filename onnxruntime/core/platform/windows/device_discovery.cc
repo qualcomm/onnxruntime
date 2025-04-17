@@ -38,12 +38,11 @@
 
 // TODO: Should we define the GUIDs manually as this seems to be the most robust way to find NPUs?
 //       What happens if the code runs on a machine that does not have DXCore?
-//       If DXCoreCreateAdapterFactory fails gracefully it might be ok to manually define these and always run 
+//       If DXCoreCreateAdapterFactory fails gracefully it might be ok to manually define these and always run
 // #if !DXCORE_AVAILABLE
 // DEFINE_GUID(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML, 0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88);
 // DEFINE_GUID(DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU, 0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed);
 // #endif
-
 
 namespace onnxruntime {
 namespace {
@@ -111,7 +110,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
                                             (DWORD)buffer.size(),
                                             &size)) {
         // PCI\VEN_xxxx&DEV_yyyy&...
-        // ACPI\VEN_xxxx&DEV_yyyy&... 
+        // ACPI\VEN_xxxx&DEV_yyyy&... if we're lucky.
         // ACPI values seem to be very inconsistent, so we check fairly carefully and always require a device id.
         const auto get_id = [](const std::wstring& hardware_id, const std::wstring& prefix) -> uint32_t {
           if (auto idx = hardware_id.find(prefix); idx != std::wstring::npos) {
