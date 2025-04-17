@@ -5125,7 +5125,7 @@ struct OrtApi {
    * \param[in] device The OrtHardwareDevice instance to query.
    * \return The device id.
    *
-   * \note This is not a unique identifier. It identifies the hardware type when combined with vendor it.
+   * \note This is not a unique identifier. It identifies the hardware type when combined with vendor id.
    * \since Version 1.22.
    */
   uint32_t(ORT_API_CALL* HardwareDevice_DeviceId)(_In_ const OrtHardwareDevice* device);

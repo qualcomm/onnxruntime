@@ -13,7 +13,7 @@
 struct OrtHardwareDevice {
   OrtHardwareDeviceType type;
   uint32_t vendor_id;
-  uint32_t device_id;
+  uint32_t device_id;  // identifies the hardware type when combined with vendor id. not a unique id.
   std::string vendor;
   OrtKeyValuePairs metadata;
 
@@ -24,7 +24,9 @@ struct OrtHardwareDevice {
     onnxruntime::HashCombine(hd.type, h);
     for (const auto& [key, value] : hd.metadata.entries) {
       onnxruntime::HashCombine(key, h);
-      onnxruntime::HashCombine(value, h);
+      if (value) {
+        onnxruntime::HashCombine(value, h);
+      }
     }
 
     return h;

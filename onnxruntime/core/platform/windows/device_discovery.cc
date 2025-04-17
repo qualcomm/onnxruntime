@@ -10,11 +10,6 @@
 #include <string>
 #include <unordered_set>
 
-// GetDxgiInfo
-// #include <dxgi.h>
-// #pragma comment(lib, "dxgi.lib")
-// #include <iostream>
-
 #include "core/common/cpuid_info.h"
 #include "core/session/abi_devices.h"
 
@@ -24,7 +19,6 @@
 #include <devguid.h>
 #include <cfgmgr32.h>
 #pragma comment(lib, "setupapi.lib")
-////
 
 //// Using D3D12
 // #include <windows.h>
@@ -34,16 +28,22 @@
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
-////
 
-//// Using DXCore
-// #define DXCORE_AVAILABLE (NTDDI_VERSION < NTDDI_WIN10_RS5)
-#define DXCORE_AVAILABLE 1
+//// Using DXCore. Requires newer Windows SDK than what we target by default.
+#define DXCORE_AVAILABLE (NTDDI_VERSION < NTDDI_WIN10_RS5)
 #include <initguid.h>
 #include <dxcore.h>
 #include <dxcore_interface.h>
 #include <wil/com.h>
-////
+
+// TODO: Should we define the GUIDs manually as this seems to be the most robust way to find NPUs?
+//       What happens if the code runs on a machine that does not have DXCore?
+//       If DXCoreCreateAdapterFactory fails gracefully it might be ok to manually define these and always run 
+// #if !DXCORE_AVAILABLE
+// DEFINE_GUID(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML, 0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88);
+// DEFINE_GUID(DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU, 0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed);
+// #endif
+
 
 namespace onnxruntime {
 namespace {
@@ -110,12 +110,9 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
                                             (PBYTE)buffer.data(),
                                             (DWORD)buffer.size(),
                                             &size)) {
-        // std::wcout << L"Device Instance: " << buffer << std::endl;
         // PCI\VEN_xxxx&DEV_yyyy&...
-        // ACPI\VEN_xxxx&DEV_yyyy&...
-        // ACPI\VEN_
-        // Include the root, \, and VEN_xxxx&DEV_yyyy
-        // ??? can ACPI values be longer
+        // ACPI\VEN_xxxx&DEV_yyyy&... 
+        // ACPI values seem to be very inconsistent, so we check fairly carefully and always require a device id.
         const auto get_id = [](const std::wstring& hardware_id, const std::wstring& prefix) -> uint32_t {
           if (auto idx = hardware_id.find(prefix); idx != std::wstring::npos) {
             auto id = hardware_id.substr(idx + prefix.size(), 4);
@@ -158,7 +155,8 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
                                             (PBYTE)buffer.data(), (DWORD)buffer.size(), &size)) {
         entry->description = buffer;
 
-        // Should we require the NPU to be found by DXCORE or do we want to allow this vague matching?
+        // Should we require the NPU to be found by DXCore or do we want to allow this vague matching?
+        // Probably depends on whether we always attempt to run DXCore or not.
         const auto possible_npu = [](const std::wstring& desc) {
           return (desc.find(L"NPU") != std::wstring::npos ||
                   desc.find(L"Neural") != std::wstring::npos ||
@@ -272,7 +270,9 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
 
   // Get all GPUs and NPUs by querying WDDM/MCDM.
   wil::com_ptr<IDXCoreAdapterFactory> adapterFactory;
-  THROW_IF_FAILED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapterFactory)));
+  if (FAILED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapterFactory)))) {
+    return device_info;
+  }
 
   // Look for devices that expose compute engines
   std::vector<const GUID*> allowedAttributes;
