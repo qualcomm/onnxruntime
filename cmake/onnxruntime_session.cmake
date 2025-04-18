@@ -19,7 +19,7 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
 endif()
 
 
-if (onnxruntime_MINIMAL_BUILD)
+if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
   file(GLOB autoep_srcs
     "${ONNXRUNTIME_ROOT}/core/session/ep_*.*"
   )
