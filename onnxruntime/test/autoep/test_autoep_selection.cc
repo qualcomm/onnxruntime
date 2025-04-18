@@ -10,6 +10,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/provider_options.h"
+#include "core/framework/session_options.h"
 #include "core/graph/constants.h"
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/onnxruntime_cxx_api.h"
