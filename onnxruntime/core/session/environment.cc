@@ -323,7 +323,7 @@ Internal copy node
     const Env& env = Env::Default();
     env.GetTelemetryProvider().LogProcessInfo();
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD)
     // register internal EPs for autoep selection
     // TODO: ??? Is there any reason not to do this like an EP allocates a large chunk of memory when created?
     //       If that is the case the user could register by name with no library path to do registration manually.
@@ -369,13 +369,15 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 
 Environment::~Environment() = default;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD)
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
                                                      std::unique_ptr<EpLibrary> ep_library,
                                                      const std::vector<EpFactoryInternal*>& internal_factories) {
   if (ep_libraries_.count(registration_name) > 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "library is already registered under ", registration_name);
   }
+
+  auto status = Status::OK();
 
   ORT_TRY {
     // create the EpInfo which loads the library if required
@@ -395,11 +397,13 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
     ep_libraries_[registration_name] = std::move(ep_info);
   }
   ORT_CATCH(const std::exception& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Failed to register EP library under '", registration_name, "' with error: ", ex.what());
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Failed to register EP library under '", registration_name, "' with error: ", ex.what());
+    });
   }
 
-  return Status::OK();
+  return status;
 }
 
 Status Environment::CreateAndRegisterInternalEps() {
@@ -436,6 +440,8 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution provider library: ", ep_name, " was not registered.");
   }
 
+  auto status = Status::OK();
+
   ORT_TRY {
     // unload.
     auto ep_info = std::move(ep_libraries_[ep_name]);
@@ -458,10 +464,12 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
     ep_info.reset();
   }
   ORT_CATCH(const std::exception& ex) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unregister EP library: ", ep_name, " with error: ", ex.what());
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to unregister EP library: ", ep_name, " with error: ", ex.what());
+    });
   }
 
-  return Status::OK();
+  return status;
 }
 
 Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
@@ -522,6 +530,6 @@ Environment::EpInfo::~EpInfo() {
   }
 }
 
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace onnxruntime

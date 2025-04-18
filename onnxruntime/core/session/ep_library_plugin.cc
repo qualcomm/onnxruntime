@@ -35,14 +35,16 @@ Status EpLibraryPlugin::Load() {
     }
   }
   ORT_CATCH(const std::exception& ex) {
-    // TODO: Add logging of exception
-    status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load execution provider library: ", library_path_,
-                             " with error: ", ex.what());
-    auto unload_status = Unload();  // If anything fails we unload the library
-    if (!unload_status.IsOK()) {
-      LOGS_DEFAULT(ERROR) << "Failed to unload execution provider library: " << library_path_ << " with error: "
-                          << unload_status.ErrorMessage();
-    }
+    ORT_HANDLE_EXCEPTION([&]() {
+      // TODO: Add logging of exception
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load execution provider library: ", library_path_,
+                               " with error: ", ex.what());
+      auto unload_status = Unload();  // If anything fails we unload the library
+      if (!unload_status.IsOK()) {
+        LOGS_DEFAULT(ERROR) << "Failed to unload execution provider library: " << library_path_ << " with error: "
+                            << unload_status.ErrorMessage();
+      }
+    });
   }
 
   return status;

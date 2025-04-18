@@ -18,8 +18,9 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
   list(APPEND onnxruntime_session_srcs ${training_api_srcs})
 endif()
 
-
-if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
+# disable for all minimal builds. enabling this pulls in all the provider bridge stuff, which is not currently
+# enabled for any minimal builds.
+if (onnxruntime_MINIMAL_BUILD)
   file(GLOB autoep_srcs
     "${ONNXRUNTIME_ROOT}/core/session/ep_*.*"
   )

@@ -48,7 +48,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     ASSERT_ORTSTATUS_OK(Ort::GetApi().AddSessionConfigEntry(session_options, "test.ep_to_select",
                                                             ep_to_select.c_str()));
 
-    const std::string option_prefix = ProviderOptionsUtils::GetProviderOptionPrefix(ep_to_select);
+    const std::string option_prefix = SessionOptions::GetProviderOptionPrefix(ep_to_select.c_str());
     for (const auto& [key, value] : provider_options.entries) {
       // add the default value with prefix
       session_options.AddConfigEntry((option_prefix + key).c_str(), value.c_str());

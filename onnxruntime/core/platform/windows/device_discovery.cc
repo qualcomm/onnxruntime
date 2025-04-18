@@ -29,7 +29,7 @@
 
 
 namespace onnxruntime {
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD)
 
 namespace {
 std::unordered_set<OrtHardwareDevice> GetInferencingDevices() {
@@ -125,7 +125,7 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
   std::unordered_set<OrtHardwareDevice> devices = GetInferencingDevices();
   return devices;
 }
-#else  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#else  // !defined(ORT_MINIMAL_BUILD)
 std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
   return {};
 }
