@@ -27,6 +27,7 @@ DEFINE_GUID(DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU, 0xd46140c4, 0xadd7, 0x451b, 0x9e
 #endif
 
 namespace onnxruntime {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 namespace {
 std::unordered_set<OrtHardwareDevice> GetInferencingDevices() {
@@ -119,5 +120,9 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
   std::unordered_set<OrtHardwareDevice> devices = GetInferencingDevices();
   return devices;
 }
-
+#else  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
+  return {};
+}
+#endif
 }  // namespace onnxruntime

@@ -18,6 +18,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 using namespace onnxruntime;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 namespace {
 // temporary implementation for testing. EP to 'select' is specified in config option
 Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, const std::string& ep_to_select) {
@@ -91,6 +92,7 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
   return Status::OK();
 }
 }  // namespace
+#endif
 
 common::Status CopyStringToOutputArg(std::string_view str, const char* err_msg, char* out, size_t* size) {
   const size_t str_len = str.size();
@@ -160,11 +162,13 @@ EP context model. Please specify a valid ep.context_file_path.");
         env->GetEnvironment());
   }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // TEMPORARY for testing. Manually specify the EP to select.
   auto auto_select_ep_name = sess->GetSessionOptions().config_options.GetConfigEntry("test.ep_to_select");
   if (auto_select_ep_name) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(TestAutoSelectEPsImpl(env->GetEnvironment(), *sess, *auto_select_ep_name));
   }
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   // Add custom domains

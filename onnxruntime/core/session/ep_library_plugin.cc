@@ -11,7 +11,7 @@ Status EpLibraryPlugin::Load() {
   auto status = Status::OK();
 
   std::lock_guard<std::mutex> lock{mutex_};
-  try {
+  ORT_TRY {
     if (factories_.empty()) {
       ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(library_path_, false, &handle_));
 
@@ -33,7 +33,8 @@ Status EpLibraryPlugin::Load() {
         factories_.push_back(factories[i]);
       }
     }
-  } catch (const std::exception& ex) {
+  }
+  ORT_CATCH(const std::exception& ex) {
     // TODO: Add logging of exception
     status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load execution provider library: ", library_path_,
                              " with error: ", ex.what());
