@@ -21,8 +21,11 @@
 // TEMPORARY: The CI builds target Windows 10 so do not have these GUIDs.
 // This is to make the builds pass so any other issues can be resolved, but needs a real solution prior to checkin.
 // these values were added in 10.0.22621.0 as part of DirectXCore API
-#if NTDDI_VERSION < NTDDI_WIN10_RS5
+// #if NTDDI_VERSION < NTDDI_WIN10_RS5 this doesn't work on the QNN ARM64 CI for some reason
+#if !defined(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML)
 DEFINE_GUID(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML, 0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88);
+#endif
+#if !defined(DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU)
 DEFINE_GUID(DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU, 0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed);
 #endif
 
