@@ -22,6 +22,20 @@ bool TryMatMul4Bits(
     int shared_mem_per_block,
     cudaStream_t stream);
 
+template <class T>
+bool TryMatMul8Bits(
+    T* output,
+    const T* a_data,
+    const uint8_t* b_data_quant,
+    const T* scales_data,
+    const uint8_t* zero_points,
+    int m,
+    int n,
+    int k,
+    int block_size,
+    int shared_mem_per_block,
+    cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
