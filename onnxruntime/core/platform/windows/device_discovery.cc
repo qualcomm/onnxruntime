@@ -112,7 +112,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
 
       uint64_t key;
       DeviceInfo* entry = nullptr;
-
+      bool is_pci = false;
       //// Get hardware ID (contains VEN_xxxx&DEV_xxxx)
       if (SetupDiGetDeviceRegistryPropertyW(devInfo,
                                             &devData,
@@ -156,6 +156,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
         entry = &device_info[key];
         entry->vendor_id = vendor_id;
         entry->device_id = device_id;
+        entry->metadata.emplace(L"SPDRP_HARDWAREID", buffer);
       } else {
         // need valid ids
         continue;
@@ -164,7 +165,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
       // Get device description.
       if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_DEVICEDESC, nullptr,
                                             (PBYTE)buffer.data(), (DWORD)buffer.size(), &size)) {
-        entry->description = buffer;
+        entry->description = std::wstring(buffer, size);
 
         // Should we require the NPU to be found by DXCore or do we want to allow this vague matching?
         // Probably depends on whether we always attempt to run DXCore or not.
@@ -202,16 +203,24 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
 
       if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_MFG, nullptr,
                                             (PBYTE)buffer.data(), (DWORD)buffer.size(), &size)) {
-        entry->vendor = buffer;
+        entry->vendor = std::wstring(buffer, size);
       }
 
       if (guid != GUID_DEVCLASS_PROCESSOR) {
         DWORD busNumber = 0;
+        GUID busType = {0};
         size = 0;
         if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_BUSNUMBER, nullptr,
-                                              reinterpret_cast<PBYTE>(&busNumber), sizeof(busNumber), &size)) {
+                                              reinterpret_cast<PBYTE>(&busNumber), sizeof(busNumber), &size) &&
+            SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_BUSTYPEGUID, nullptr,
+                                              reinterpret_cast<PBYTE>(&busType), sizeof(busType), &size)) {
+          // only use bus # for PCI devices
+          std::cout << "Bus #:" << busNumber << " GUID:" << *(uint64_t*)(&busType) << std::endl;
           // push_back in case there are two identical devices. not sure how else to tell them apart
-          entry->bus_ids.push_back(busNumber);
+          // Bus # on a VM for a GPU is 512 (or -1 if data size was treated as a byte)
+          if (busNumber < 255) {
+            entry->bus_ids.push_back(busNumber);
+          }
         }
       }
     }
