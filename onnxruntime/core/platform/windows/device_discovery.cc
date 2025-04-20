@@ -135,6 +135,8 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
           return 0;
         };
 
+        std::wcout << "SPDRP_HARDWAREID:" << std::wstring(buffer, size) << std::endl;
+
         uint32_t vendor_id = get_id(buffer, L"VEN_");
         uint32_t device_id = get_id(buffer, L"DEV_");
         // won't always have a vendor id from an ACPI entry. need at least a device id to identify the hardware
@@ -156,7 +158,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
         entry = &device_info[key];
         entry->vendor_id = vendor_id;
         entry->device_id = device_id;
-        entry->metadata.emplace(L"SPDRP_HARDWAREID", buffer);
+        entry->metadata.emplace(L"SPDRP_HARDWAREID", std::wstring(buffer, size));
       } else {
         // need valid ids
         continue;
@@ -215,7 +217,9 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
             SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_BUSTYPEGUID, nullptr,
                                               reinterpret_cast<PBYTE>(&busType), sizeof(busType), &size)) {
           // only use bus # for PCI devices
-          std::cout << "Bus #:" << busNumber << " GUID:" << *(uint64_t*)(&busType) << std::endl;
+          std::cout << "Bus #:" << busNumber << " GUID:" << std::hex << std::uppercase
+                    << busType.Data1 << "." << busType.Data2 << "." << busType.Data3 << "." << busType.Data4
+                    << std::endl;
           // push_back in case there are two identical devices. not sure how else to tell them apart
           // Bus # on a VM for a GPU is 512 (or -1 if data size was treated as a byte)
           if (busNumber < 255) {
