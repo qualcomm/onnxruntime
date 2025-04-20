@@ -112,7 +112,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
 
       uint64_t key;
       DeviceInfo* entry = nullptr;
-      bool is_pci = false;
+
       //// Get hardware ID (contains VEN_xxxx&DEV_xxxx)
       if (SetupDiGetDeviceRegistryPropertyW(devInfo,
                                             &devData,
