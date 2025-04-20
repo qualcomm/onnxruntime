@@ -437,6 +437,16 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
       }
     }
 
+    std::cout << "Adding OrtHardwareDevice\nvendor_id:" << ortdevice.vendor_id
+              << " device_id:" << ortdevice.device_id
+              << " type:" << static_cast<int>(ortdevice.type)
+              << " metadata: ";
+    for (auto& [key, value] : ortdevice.metadata.entries) {
+      std::cout << " " << key << "=" << value << " ";
+    }
+
+    std::cout << std::endl;
+
     return ortdevice;
   };
 

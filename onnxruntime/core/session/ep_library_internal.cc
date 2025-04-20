@@ -58,18 +58,19 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
   static const std::string ep_name = kDmlExecutionProvider;
   const auto is_supported = [](const OrtHardwareDevice* device,
                                OrtKeyValuePairs** /*ep_metadata*/,
-                               OrtKeyValuePairs** /*ep_options*/) -> bool {
+                               OrtKeyValuePairs** ep_options) -> bool {
     if (device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
       // We should be able to specify device_id here so that the EP will use a specific device.
       // TODO: Investigate why the device ID is incorrect in 'Windows GPU DML CI Pipeline' and re-enable this.
       //
       // TODO: Should we ignore a user provided 'device_id' when they select an OrtEpDevice that has a specific device?
       //       How would we know what options should not allow user overrides if set in OrtEpDevice?
-      // if (auto it = device->metadata.entries.find("BusNumber"); it != device->metadata.entries.end()) {
-      //  auto options = std::make_unique<OrtKeyValuePairs>();
-      //  options->Add("device_id", it->second.c_str());
-      //  *ep_options = options.release();
-      //}
+      if (auto it = device->metadata.entries.find("BusNumber"); it != device->metadata.entries.end()) {
+        auto options = std::make_unique<OrtKeyValuePairs>();
+        options->Add("device_id", it->second.c_str());
+        std::cout << "Setting device_id to " << it->second.c_str() << std::endl;
+        *ep_options = options.release();
+      }
 
       return true;
     }
