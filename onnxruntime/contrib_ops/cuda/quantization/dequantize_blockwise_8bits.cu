@@ -23,19 +23,19 @@ namespace cuda {
 // Processes 4 elements (since each is 8 bits, 4 fit in uint32_t)
 __device__ __forceinline__ void DequantizeFourElements(uint32_t values_quant, half scale, half zp, half* output) {
   half2 scale_half2 = {scale, scale};
-  // Assuming ZP is symmetric or already adjusted if needed. Standard formula: val = (quant - zp) * scale = quant * scale - zp * scale
+  // Formula: val = (quant - zp) * scale = quant * scale - zp * scale
   half zp_adjust = -scale * zp;
   half2 zp_adjust2 = {zp_adjust, zp_adjust};
 
   alignas(16) half2 results[2];  // Store 4 half values
 
   // Extract 4 uint8_t values from uint32_t
-  half v0 = __uint2half_rn(values_quant & 0xFF);
-  half v1 = __uint2half_rn((values_quant >> 8) & 0xFF);
+  half v0 = __ushort2half_rn(static_cast<uint8_t>(values_quant & 0xFF));
+  half v1 = __ushort2half_rn(static_cast<uint8_t>((values_quant >> 8) & 0xFF));
   results[0] = __halves2half2(v0, v1) * scale_half2 + zp_adjust2;
 
-  half v2 = __uint2half_rn((values_quant >> 16) & 0xFF);
-  half v3 = __uint2half_rn((values_quant >> 24) & 0xFF);
+  half v2 = __ushort2half_rn(static_cast<uint8_t>((values_quant >> 16) & 0xFF));
+  half v3 = __ushort2half_rn(static_cast<uint8_t>((values_quant >> 24) & 0xFF));
   results[1] = __halves2half2(v2, v3) * scale_half2 + zp_adjust2;
 
   // Write 4 half values (equivalent to float2)
@@ -46,6 +46,9 @@ __device__ __forceinline__ void DequantizeFourElements(uint32_t values_quant, ha
 __device__ __forceinline__ void DequantizeFourElements(uint32_t values_quant, float scale, float zp, float* output) {
   // Assuming ZP is symmetric or already adjusted if needed. Standard formula: val = (quant - zp) * scale = quant * scale - zp * scale
   float zp_adjust = -scale * zp;
+
+  printf("blockIdx.x: %d, threadIdx.x:%d, quant_value: %d %d %d %d, scale: %f, zp: %f, zp_adjust: %f\n",
+          blockIdx.x, threadIdx.x, values_quant & 0xFF, (values_quant >> 8) & 0xFF, (values_quant >> 16) & 0xFF, (values_quant >> 24) & 0xFF, scale, zp, zp_adjust);
 
   // Extract 4 uint8_t values from uint32_t
   output[0] = float(values_quant & 0xFF) * scale + zp_adjust;
@@ -99,9 +102,9 @@ __global__ void Dequantize8BitsKernelReOrder(
     uint8_t q_val = (quant_value >> (8 * i)) & 0xFF;
 
     if constexpr (std::is_same_v<T, half>) {
-      T zp_T = __uint2half_rn(zp);
+      T zp_T = __ushort2half_rn(zp);
       T zp_adjust = -scale * zp_T;
-      output_i[i] = __uint2half_rn(q_val) * scale + zp_adjust;
+      output_i[i] = __ushort2half_rn(q_val) * scale + zp_adjust;
     } else {
       T zp_T = static_cast<T>(zp);
       T zp_adjust = -scale * zp_T;
@@ -117,7 +120,6 @@ __global__ void Dequantize8BitsKernel(
     const T* scale_data,
     const ZeroT* zero_points,
     int block_size,
-    int groups_per_K,  // Not strictly needed if no ZP unpacking
     int groups_per_threadblock,
     int total_groups) {
   constexpr int element_per_thread = 4;  // Process 4 elements (uint8_t) per thread using uint32_t load
@@ -128,6 +130,8 @@ __global__ void Dequantize8BitsKernel(
 
   // element_offset corresponds to the start of the 4 elements processed by this thread iteration
   int element_offset = block_id * block_size + ((threadIdx.x * element_per_thread) & (block_size - 1));
+
+  printf("blockIdx.x: %d, threadIdx.x: %d, block_id: %d, element_offset: %d\n", blockIdx.x, threadIdx.x, block_id, element_offset);
 
   // Read 4 uint8_t values packed into a uint32_t
   uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset));
@@ -160,41 +164,39 @@ Status Dequantize8Bits(
     T* output,
     const uint8_t* quant_data,
     const T* scales_data,
-    const ZeroT* zero_points,    // Shape: [N, K_blocks] or [N*K_blocks]
+    const ZeroT* zero_points,    // Shape: [N, K_blocks] or [N * K_blocks]
     const int32_t* reorder_idx,  // If provided, ZeroT is expected to be uint8_t
     int k,                       // Original dimension before padding
     int n,                       // Other dimension
     int block_size,
     cudaStream_t stream) {
-  // k might be padded, total elements = n * k_padded
-  ORT_ENFORCE(k % block_size == 0, "k must be a multiple of block_size");
+  ORT_ENFORCE(k % block_size == 0, "k must be 7a multiple of block_size"); // K shall be padded to multiple of block_size.
 
-  constexpr int element_per_thread = 4;  // Matched to Dequantize*Kernels
+  constexpr int element_per_thread = 4;
   int groups_per_K = k / block_size;
   int total_groups = n * groups_per_K;  // Total number of blocks
 
-  // How many blocks one thread block can handle depends on block_size vs maxThreadsPerBlock
-  // This assumes block_size <= 256 * 4 = 1024.
+  assert(block_size <= GridDim::maxThreadsPerBlock * element_per_thread);
   int groups_per_threadblock = GridDim::maxThreadsPerBlock * element_per_thread / block_size;
   int groups_per_grid = CeilDiv(total_groups, groups_per_threadblock);
 
   dim3 grid_dim(groups_per_grid);
   dim3 block_dim(GridDim::maxThreadsPerBlock);
 
+  DUMP_TENSOR_INIT();
   if (!reorder_idx || std::is_same_v<ZeroT, T>) {
-    // Launch standard kernel
+    DUMP_STRING("Launch standard kernel for Dequantize8Bits");
     Dequantize8BitsKernel<T, ZeroT><<<grid_dim, block_dim, 0, stream>>>(
         output,
         quant_data,
         scales_data,
         zero_points,
         block_size,
-        groups_per_K,  // Pass groups_per_K for potential ZP indexing if needed
         groups_per_threadblock,
         total_groups);
   } else {
-    // Launch reorder kernel (requires uint8_t zero points)
     if constexpr (std::is_same_v<ZeroT, uint8_t>) {
+      DUMP_STRING("Launch reorder kernel for Dequantize8Bits");
       Dequantize8BitsKernelReOrder<T><<<grid_dim, block_dim, 0, stream>>>(
           output,
           quant_data,
