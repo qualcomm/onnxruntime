@@ -11,6 +11,7 @@
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "dequantize_blockwise.cuh"
 
 using namespace onnxruntime::cuda;
@@ -57,6 +58,9 @@ __device__ __forceinline__ void DequantizeFourElements(uint32_t values_quant, fl
   output[3] = float((values_quant >> 24) & 0xFF) * scale + zp_adjust;
 }
 
+// REVIEW: Deprecate reorder_idx (Recommend to reorder scales and zero points during model conversion instead of using reorder_idx).
+// Reorder index is a 1D array of size [K] to support desc_act used in GPTQ quantization.
+// However, it impacts inference performance of the kernel since it is not optimized for coalescing memory access.
 template <class T>
 __global__ void Dequantize8BitsKernelReOrder(
     T* output,
@@ -74,28 +78,31 @@ __global__ void Dequantize8BitsKernelReOrder(
     return;
   }
 
-  const int scales_shape_x = groups_per_K;
-  int n_idx = group_id / scales_shape_x;
-  int kb_idx = group_id % scales_shape_x;  // Block index within K dimension
   // element_offset corresponds to the start of the 4 elements processed by this thread iteration
   int element_offset = group_id * block_size + ((threadIdx.x * element_per_thread) & (block_size - 1));
 
   T* output_i = output + element_offset;
+
+  // shape of scales and zero_points is [N, groups_per_K]. Compute the 2D indices below.
+  int n_idx = group_id / groups_per_K;
+  int kb_idx = group_id % groups_per_K;
+
   // Read 4 uint8_t values packed into a uint32_t
   uint32_t quant_value = *(reinterpret_cast<const uint32_t*>(quant_data + element_offset));
 
   // Adjust reorder index pointer to the start of the 4 indices for this thread iteration
-  const int32_t* reorder_idx_with_off = reorder_idx + kb_idx * block_size + ((threadIdx.x * element_per_thread) & (block_size - 1));
+  const int32_t* g_idx = reorder_idx + kb_idx * block_size + ((threadIdx.x * element_per_thread) & (block_size - 1));
 
   for (int i = 0; i < element_per_thread; i++) {
-    int32_t rid = reorder_idx_with_off[i];  // Get the reordered block index for scale/zp
-    T scale = *(scale_data + n_idx * scales_shape_x + rid);
+    // Typical value of g_idx is in the range of [0, groups_per_K) for reordering groups.
+    // No range check here so it might have out-of-bound access if the reorder_idx is not valid.
+    int32_t rid = g_idx[i];
+    ptrdiff_t scale_zp_offset = n_idx * groups_per_K + rid;
+    T scale = *(scale_data + scale_zp_offset);
 
-    // Assuming one uint8_t zero point per original block. No packing needed.
     uint8_t zp = 128;  // Default zero point
     if (zero_points) {
-      // Assuming zero_points shape is [N, K_blocks] where K_blocks = groups_per_K
-      zp = zero_points[n_idx * groups_per_K + rid];
+      zp = zero_points[scale_zp_offset];
     }
 
     // Extract the i-th uint8_t value
