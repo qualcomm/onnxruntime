@@ -68,7 +68,7 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
       << "  var scale = " << scales.GetByIndices("scale_indices") << ";\n";
 
   if (!has_zeropoint_) {
-    const std::string default_zero_point = is_uint8_ ? "input_element_t(0)" : "input_element_t(0)";
+    const std::string default_zero_point = is_uint8_ ? "input_element_t(8)" : "input_element_t(0)";
     shader.MainFunctionBody()
         << "  let zero_point = " << default_zero_point << ";\n";
   } else {
@@ -146,7 +146,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   GatherBlockQuantizedProgram program{is_signed, is_uint8, indices_rank, gather_axis, zero_points != nullptr, x_shape, output_shape};
 
   program
-      .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank}})
+      .AddInputs({{x, ProgramTensorMetadataDependency::TypeAndRank, x_shape, 1}})
       .AddInputs({{indices, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddInputs({{scales, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
@@ -160,7 +160,12 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   if (zero_points != nullptr) {
     ORT_RETURN_IF_NOT(scales_rank == zero_points->Shape().NumDimensions(),
                       "scales and zero_points must have the same rank.");
-    program.AddInputs({{zero_points, ProgramTensorMetadataDependency::TypeAndRank}});
+    auto zero_points_shape = zero_points->Shape();
+    if (is_uint8 && zero_points_shape.NumDimensions()>0) {
+      zero_points_shape[zero_points_shape.NumDimensions() - 1] = zero_points_shape[zero_points_shape.NumDimensions() - 1] * 2;
+    }
+
+    program.AddInputs({{zero_points, ProgramTensorMetadataDependency::TypeAndRank, zero_points_shape, 1}});
   }
 
   return context.RunProgram(program);
@@ -171,7 +176,7 @@ const std::vector<MLDataType>& GatherBlockQuantizedT1Constraint() {
   static std::vector<MLDataType> types{
       DataTypeImpl::GetTensorType<Int4x2>(),
       DataTypeImpl::GetTensorType<UInt4x2>(),
-      // DataTypeImpl::GetTensorType<uint8_t>()
+      DataTypeImpl::GetTensorType<uint8_t>()
   };
   return types;
 }
