@@ -438,7 +438,7 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
     }
 
     oss << "]}" << std::endl;
-    LOGS_DEFAULT(INFO) << oss.str();
+    LOGS_DEFAULT(WARNING) << oss.str();
 
     return ortdevice;
   };

@@ -172,6 +172,20 @@ TEST(AutoEpSelection, DmlEP) {
       if (strcmp(c_api->EpDevice_EpName(ep_device), kDmlExecutionProvider) == 0) {
         const auto* device = c_api->EpDevice_Device(ep_device);
         const OrtKeyValuePairs* kvps = c_api->HardwareDevice_Metadata(device);
+
+        std::cout << "Found DML device: Vendor=" << c_api->HardwareDevice_Vendor(device) << "\n";
+        std::cout << " DeviceId=" << c_api->HardwareDevice_DeviceId(device) << "\n";
+        std::cout << " VendorId=" << c_api->HardwareDevice_VendorId(device) << std::endl;
+        const char* const* keys = nullptr;
+        const char* const* values = nullptr;
+        size_t num_entries;
+        std::cout << " Metadata=[";
+        c_api->GetKeyValuePairs(kvps, &keys, &values, &num_entries);
+        for (size_t j = 0; j < num_entries; ++j) {
+          std::cout << keys[j] << " : " << values[j] << ", ";
+        }
+        std::cout << "]" << std::endl;
+
         if (devices.empty()) {
           // add the first device
           devices.push_back(ep_device);

@@ -64,6 +64,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
       //       a specific device.
       //       How would we know what options should not allow user overrides if set in OrtEpDevice?
       if (auto it = device->metadata.entries.find("DxgiAdapterNumber"); it != device->metadata.entries.end()) {
+        std::cout << "DML EpLibraryInternal Setting device_id to " << it->second << std::endl;
         auto options = std::make_unique<OrtKeyValuePairs>();
         options->Add("device_id", it->second.c_str());
         *ep_options = options.release();
