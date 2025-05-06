@@ -22,6 +22,63 @@
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
+extern "C" {
+OrtStatus* ORT_API_CALL PolicyDelegate(_In_ const OrtEpDevice** ep_devices,
+                                       _In_ size_t num_devices,
+                                       _In_ const OrtKeyValuePairs* model_metadata,
+                                       _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
+                                       _Inout_ const OrtEpDevice** selected,
+                                       _In_ size_t max_selected,
+                                       _Out_ size_t* num_selected,
+                                       _In_ void* /*state*/) {
+  *num_selected = 0;
+
+  if (max_selected <= 2) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Expected to be able to select 2 devices.");
+  }
+
+  if (model_metadata->entries.empty()) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Model metadata was empty.");
+  }
+
+  selected[0] = ep_devices[0];
+  *num_selected = 1;
+  if (num_devices > 1) {
+    // CPU EP is always last.
+    selected[1] = ep_devices[num_devices - 1];
+    *num_selected = 2;
+  }
+
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL PolicyDelegateSelectNone(_In_ const OrtEpDevice** /*ep_devices*/,
+                                                 _In_ size_t /*num_devices*/,
+                                                 _In_ const OrtKeyValuePairs* /*model_metadata*/,
+                                                 _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
+                                                 _Inout_ const OrtEpDevice** /*selected*/,
+                                                 _In_ size_t /*max_selected*/,
+                                                 _Out_ size_t* num_selected,
+                                                 _In_ void* /*state*/) {
+  *num_selected = 0;
+
+  return nullptr;
+}
+
+OrtStatus* ORT_API_CALL PolicyDelegateReturnError(_In_ const OrtEpDevice** /*ep_devices*/,
+                                                  _In_ size_t /*num_devices*/,
+                                                  _In_ const OrtKeyValuePairs* /*model_metadata*/,
+                                                  _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
+                                                  _Inout_ const OrtEpDevice** /*selected*/,
+                                                  _In_ size_t /*max_selected*/,
+                                                  _Out_ size_t* num_selected,
+                                                  _In_ void* /*state*/) {
+  *num_selected = 0;
+
+  return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Selection error.");
+}
+}  // extern "C"
+
 namespace onnxruntime {
 namespace test {
 namespace {
@@ -356,69 +413,6 @@ TEST(AutoEpSelection, PreferNpu) {
                        OrtExecutionProviderDevicePolicy::OrtExecutionProviderDevicePolicy_PREFER_NPU);
 }
 
-// Disable EP selection delegate testing on Windows x86 builds.
-// There's a compilation error on the Zip-Nuget-* CI Pipeline for x86 related to
-// casting the concrete delegate functions declared in this file to the type `EpSelectionDelegate`.
-// Compiler version: 14.40.33807
-// build args: --config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti
-// --build_shared_lib --update --build --cmake_generator 'Visual Studio 17 2022' --enable_onnx_tests
-// --use_telemetry --enable_onnx_tests --enable_wcos --use_azure
-#if !defined(_M_IX86)
-static OrtStatus* ORT_API_CALL PolicyDelegate(_In_ const OrtEpDevice** ep_devices,
-                                              _In_ size_t num_devices,
-                                              _In_ const OrtKeyValuePairs* model_metadata,
-                                              _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
-                                              _Inout_ const OrtEpDevice** selected,
-                                              _In_ size_t max_selected,
-                                              _Out_ size_t* num_selected,
-                                              _In_ void* /*state*/) {
-  *num_selected = 0;
-
-  if (max_selected <= 2) {
-    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Expected to be able to select 2 devices.");
-  }
-
-  if (model_metadata->entries.empty()) {
-    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Model metadata was empty.");
-  }
-
-  selected[0] = ep_devices[0];
-  *num_selected = 1;
-  if (num_devices > 1) {
-    // CPU EP is always last.
-    selected[1] = ep_devices[num_devices - 1];
-    *num_selected = 2;
-  }
-
-  return nullptr;
-}
-
-static OrtStatus* ORT_API_CALL PolicyDelegateSelectNone(_In_ const OrtEpDevice** /*ep_devices*/,
-                                                        _In_ size_t /*num_devices*/,
-                                                        _In_ const OrtKeyValuePairs* /*model_metadata*/,
-                                                        _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
-                                                        _Inout_ const OrtEpDevice** /*selected*/,
-                                                        _In_ size_t /*max_selected*/,
-                                                        _Out_ size_t* num_selected,
-                                                        _In_ void* /*state*/) {
-  *num_selected = 0;
-
-  return nullptr;
-}
-
-static OrtStatus* ORT_API_CALL PolicyDelegateReturnError(_In_ const OrtEpDevice** /*ep_devices*/,
-                                                         _In_ size_t /*num_devices*/,
-                                                         _In_ const OrtKeyValuePairs* /*model_metadata*/,
-                                                         _In_opt_ const OrtKeyValuePairs* /*runtime_metadata*/,
-                                                         _Inout_ const OrtEpDevice** /*selected*/,
-                                                         _In_ size_t /*max_selected*/,
-                                                         _Out_ size_t* num_selected,
-                                                         _In_ void* /*state*/) {
-  *num_selected = 0;
-
-  return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Selection error.");
-}
-
 // test providing a delegate
 TEST(AutoEpSelection, PolicyDelegate) {
   std::vector<Input<float>> inputs(1);
@@ -507,7 +501,6 @@ TEST(AutoEpSelection, PolicyDelegateReturnsError) {
                            /*test_session_creation_only*/ true),
       Ort::Exception);
 }
-#endif  // !defined(_M_IX86)
 
 namespace {
 struct ExamplePluginInfo {
