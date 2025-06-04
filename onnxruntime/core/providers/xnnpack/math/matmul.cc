@@ -113,7 +113,7 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   float foutput_min = -std::numeric_limits<float>::infinity();
   float foutput_max = std::numeric_limits<float>::infinity();
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    status = xnn_create_fully_connected_nc_f32(
+    status = xnn_create_fully_connected_nc_pf32(
         shape_broadcast[0],    // size_t input_channels,
         shape_broadcast[1],    // size_t output_channels,
         shape_broadcast[0],    // size_t input_stride,
@@ -163,7 +163,7 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
 
   pthreadpool_t threadpool = GetThreadPool();
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    status = xnn_reshape_fully_connected_nc_f32(op0_.get(), a->Shape()[0], threadpool);
+    status = xnn_reshape_fully_connected_nc_pf32(op0_.get(), a->Shape()[0], threadpool);
   } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
     status = xnn_reshape_fully_connected_nc_f16(op0_.get(), a->Shape()[0], threadpool);
   }
@@ -174,7 +174,7 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
 
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
     auto* y_data = y->MutableData<float>();
-    status = xnn_setup_fully_connected_nc_f32(op0_.get(), a->Data<float>(), y_data);
+    status = xnn_setup_fully_connected_nc_pf32(op0_.get(), a->Data<float>(), y_data);
   } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
     auto* y_data = y->MutableData<MLFloat16>();
     status = xnn_setup_fully_connected_nc_f16(op0_.get(), a->Data<MLFloat16>(), y_data);

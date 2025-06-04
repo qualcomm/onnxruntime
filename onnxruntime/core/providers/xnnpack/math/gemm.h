@@ -38,6 +38,8 @@ class Gemm : protected GemmBase, public XnnpackKernel {
   std::optional<std::pair<float, float>> clip_min_max_;
 
   XnnpackOperator op0_ = nullptr;
+  
+  XnnpackOperator left_op0_ = nullptr;
 
   float alpha_;
   float beta_;
