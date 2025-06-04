@@ -19,6 +19,10 @@ namespace xnnpack {
 bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
                                  const GraphViewer& graph_viewer) {
   bool supported = false;
+
+  // XNNPACK version used by this version of onnxrt does not support resize operator
+  // Hence, returning false
+  return supported;
   do {
     if (node_unit.SinceVersion() < 10) {
       break;

@@ -143,6 +143,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   auto weights_cache = GetWeightsCache();
   xnn_status status = xnn_status::xnn_status_uninitialized;
   struct xnn_operator* p = nullptr;
+  struct xnn_operator* left_p = nullptr;
   float foutput_min = clip_min_max_ ? clip_min_max_->first : -std::numeric_limits<float>::infinity();
   float foutput_max = clip_min_max_ ? clip_min_max_->second : std::numeric_limits<float>::infinity();
   if (op_compute_type_ == OpComputeType::op_compute_type_fp32) {
@@ -150,7 +151,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
     if (C_matrix_exists_) {
       bias_data = tensor.Data<float>();
     }
-    status = xnn_create_fully_connected_nc_f32(
+    status = xnn_create_fully_connected_nc_pf32(
         trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_channels,
         trans_B_ == CblasNoTrans ? B_->Shape()[1] : B_->Shape()[0],  // size_t output_channels,
         trans_B_ == CblasNoTrans ? B_->Shape()[0] : B_->Shape()[1],  // size_t input_stride,
@@ -178,12 +179,15 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         code_cache, weights_cache,
         &p);
   }
+  
+  status = xnn_create_pack_lh_x32(0, &left_p);
 
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_create_fully_connected_nc_",
                            OpTypeToString(op_compute_type_), " returned ", status);
   }
   op0_.reset(p);
+  left_op0_.reset(left_p);
 
   return Status::OK();
 }
@@ -197,12 +201,25 @@ Status Gemm::Compute(OpKernelContext* context) const {
   if (M_ == 0 || N_ == 0) {
     return Status::OK();
   }
+  
+  xnn_allocator* allocator = GetStoredAllocator().second;
+  auto deallocator = [allocator](void* ptr) { allocator->aligned_deallocate(allocator->context, ptr); };
+  std::unique_ptr<void, decltype(deallocator)> workspace(nullptr, deallocator);
+  size_t workspace_size = 0;
+  xnn_status status = xnn_reshape_pack_lh_x32(left_op0_.get(), 1, trans_A_ == CblasNoTrans ? M_ : K_, trans_A_ == CblasNoTrans ? K_ : M_, &workspace_size, threadpool);
+  
+  workspace.reset(allocator->aligned_allocate(allocator->context, XNN_ALLOCATION_ALIGNMENT, workspace_size));  
+  
+  status = xnn_setup_pack_lh_x32(left_op0_.get(), A->Data<float>(), workspace.get());
+  
+  status = xnn_run_operator(left_op0_.get(), nullptr);
+  
 
-  auto reshape_func = xnn_reshape_fully_connected_nc_f32;
+  auto reshape_func = xnn_reshape_fully_connected_nc_pf32;
   if (op_compute_type_ == OpComputeType::op_compute_type_fp16) {
     reshape_func = xnn_reshape_fully_connected_nc_f16;
   }
-  xnn_status status = reshape_func(op0_.get(),
+  status = reshape_func(op0_.get(),
                                    // Number of rows to multiply
                                    trans_A_ == CblasNoTrans ? M_ : K_,
                                    threadpool);
@@ -214,7 +231,7 @@ Status Gemm::Compute(OpKernelContext* context) const {
 
   status = xnn_status_invalid_state;
   if (op_compute_type_ == op_compute_type_fp32) {
-    status = xnn_setup_fully_connected_nc_f32(op0_.get(), A->Data<float>(), Y->MutableData<float>());
+    status = xnn_setup_fully_connected_nc_pf32(op0_.get(), (const float *)workspace.get()/*A->Data<float>()*/, Y->MutableData<float>());
   } else if (op_compute_type_ == OpComputeType::op_compute_type_fp16) {
     status = xnn_setup_fully_connected_nc_f16(op0_.get(), A->Data<MLFloat16>(), Y->MutableData<MLFloat16>());
   }
